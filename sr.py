@@ -81,12 +81,27 @@ if __name__ == "__main__":
         while current_step < n_iter:
             current_epoch += 1
             for _, train_data in enumerate(train_loader):
+                # result_path = '{}/train'.format(opt['path']['results'])
+                # os.makedirs(result_path, exist_ok=True)
                 current_step += 1
                 if current_step > n_iter:
                     break
                 diffusion.feed_data(train_data)
                 diffusion.optimize_parameters()
                 # log
+                # if current_step % opt['train']['train_print_freq'] == 0:
+                #     diffusion.test(continous=False)
+                #     visuals = diffusion.get_current_visuals()
+                #     train_out = torch.cat([visuals['SR'], visuals['HR'][opt['datasets']['train']['batch_size']-1], visuals['INF'][opt['datasets']['train']['batch_size']-1]],dim=2)
+                #     # train_out = diffusion.print_train_result()
+                #     train_img = Metrics.tensor2img(train_out)  # uint8
+                #     Metrics.save_img(train_img, '{}/{}_sr.png'.format(result_path, current_step))
+                #     if wandb_logger:
+                #         wandb_logger.log_image(
+                #             f'iter_{current_step}',
+                #             train_img
+                #         )
+
                 if current_step % opt['train']['print_freq'] == 0:
                     logs = diffusion.get_current_log()
                     message = '<epoch:{:3d}, iter:{:8,d}> '.format(
@@ -103,8 +118,7 @@ if __name__ == "__main__":
                 if current_step % opt['train']['val_freq'] == 0:
                     avg_psnr = 0.0
                     idx = 0
-                    result_path = '{}/{}'.format(opt['path']
-                                                 ['results'], current_epoch)
+                    result_path = '{}/{}'.format(opt['path']['results'], current_epoch)
                     os.makedirs(result_path, exist_ok=True)
 
                     diffusion.set_new_noise_schedule(
@@ -138,7 +152,7 @@ if __name__ == "__main__":
 
                         if wandb_logger:
                             wandb_logger.log_image(
-                                f'validation_{idx}', 
+                                f'validation_{idx}',
                                 np.concatenate((fake_img, sr_img, hr_img), axis=1)
                             )
 
