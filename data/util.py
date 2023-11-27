@@ -3,9 +3,10 @@ import torch
 import torchvision
 import random
 import numpy as np
+from natsort import natsorted
 
 IMG_EXTENSIONS = ['.jpg', '.JPG', '.jpeg', '.JPEG',
-                  '.png', '.PNG', '.ppm', '.PPM', '.bmp', '.BMP']
+                  '.png', '.PNG', '.ppm', '.PPM', '.bmp', '.BMP', '.mhd']
 
 
 def is_image_file(filename):
@@ -23,6 +24,15 @@ def get_paths_from_images(path):
     assert images, '{:s} has no valid image file'.format(path)
     return sorted(images)
 
+def get_paths_from_mhds(path):
+    assert os.path.isdir(path), '{:s} is not a valid directory'.format(path)
+    images = []
+    for dirpath, _, fnames in sorted(os.walk(path)):
+        for fname in sorted(fnames):
+            if is_image_file(fname):
+                img_path = os.path.join(dirpath, fname)
+                images.append(img_path)
+    return natsorted(images)
 
 def augment(img_list, hflip=True, rot=True, split='val'):
     # horizontal flip OR rotate
@@ -73,7 +83,7 @@ def transform2tensor(img, min_max=(0, 1)):
 # implementation by torchvision, detail in https://github.com/Janspiry/Image-Super-Resolution-via-Iterative-Refinement/issues/14
 totensor = torchvision.transforms.ToTensor()
 hflip = torchvision.transforms.RandomHorizontalFlip()
-def transform_augment(img_list, split='val', min_max=(0, 1)):    
+def transform_augment(img_list, split='val', min_max=(0, 1)):
     imgs = [totensor(img) for img in img_list]
     if split == 'train':
         imgs = torch.stack(imgs, 0)

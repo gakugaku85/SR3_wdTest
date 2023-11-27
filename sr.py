@@ -81,26 +81,11 @@ if __name__ == "__main__":
         while current_step < n_iter:
             current_epoch += 1
             for _, train_data in enumerate(train_loader):
-                # result_path = '{}/train'.format(opt['path']['results'])
-                # os.makedirs(result_path, exist_ok=True)
                 current_step += 1
                 if current_step > n_iter:
                     break
                 diffusion.feed_data(train_data)
                 diffusion.optimize_parameters()
-                # log
-                # if current_step % opt['train']['train_print_freq'] == 0:
-                #     diffusion.test(continous=False)
-                #     visuals = diffusion.get_current_visuals()
-                #     train_out = torch.cat([visuals['SR'], visuals['HR'][opt['datasets']['train']['batch_size']-1], visuals['INF'][opt['datasets']['train']['batch_size']-1]],dim=2)
-                #     # train_out = diffusion.print_train_result()
-                #     train_img = Metrics.tensor2img(train_out)  # uint8
-                #     Metrics.save_img(train_img, '{}/{}_sr.png'.format(result_path, current_step))
-                #     if wandb_logger:
-                #         wandb_logger.log_image(
-                #             f'iter_{current_step}',
-                #             train_img
-                #         )
 
                 if current_step % opt['train']['print_freq'] == 0:
                     logs = diffusion.get_current_log()
@@ -123,40 +108,45 @@ if __name__ == "__main__":
 
                     diffusion.set_new_noise_schedule(
                         opt['model']['beta_schedule']['val'], schedule_phase='val')
+
                     for _,  val_data in enumerate(val_loader):
+                        sr_imgs = []
+                        hr_imgs = []
+                        fake_imgs = []
                         idx += 1
                         diffusion.feed_data(val_data)
                         diffusion.test(continous=False)
                         visuals = diffusion.get_current_visuals()
-                        sr_img = Metrics.tensor2img(visuals['SR'])  # uint8
-                        hr_img = Metrics.tensor2img(visuals['HR'])  # uint8
-                        lr_img = Metrics.tensor2img(visuals['LR'])  # uint8
-                        fake_img = Metrics.tensor2img(visuals['INF'])  # uint8
+                        for i in range(visuals['SR'].shape[0]):
+                            fake_img_png = Metrics.tensor2img(visuals['INF'][i])
+                            Metrics.save_img(fake_img_png, '{}/{}_{}_val_{}.png'.format(result_path, current_step, idx, i))
 
-                        # generation
-                        Metrics.save_img(
-                            hr_img, '{}/{}_{}_hr.png'.format(result_path, current_step, idx))
-                        Metrics.save_img(
-                            sr_img, '{}/{}_{}_sr.png'.format(result_path, current_step, idx))
-                        Metrics.save_img(
-                            lr_img, '{}/{}_{}_lr.png'.format(result_path, current_step, idx))
-                        Metrics.save_img(
-                            fake_img, '{}/{}_{}_inf.png'.format(result_path, current_step, idx))
-                        tb_logger.add_image(
-                            'Iter_{}'.format(current_step),
-                            np.transpose(np.concatenate(
-                                (fake_img, sr_img, hr_img), axis=1), [2, 0, 1]),
-                            idx)
-                        avg_psnr += Metrics.calculate_psnr(
-                            sr_img, hr_img)
+                            fake_img = Metrics.tensor2mhd(visuals['INF'][i])
+                            sr_img = Metrics.tensor2mhd(visuals['SR'][i])
+                            hr_img = Metrics.tensor2mhd(visuals['HR'][i])
+                            val_img = np.concatenate([fake_img, sr_img, hr_img], axis=1)
+                            Metrics.save_mhd(val_img, '{}/{}_{}_val_{}.mhd'.format(result_path, current_step, idx, i))
+                            # sr_imgs.append(sr_img)
+                            # hr_imgs.append(hr_img)
+                            # fake_imgs.append(fake_img)
+                            # generation
+                            # Metrics.save_mhd(
+                            #     hr_img, '{}/{}_{}_hr_{}.mhd'.format(result_path, current_step, idx, i))
+                            # Metrics.save_mhd(
+                            #     fake_img, '{}/{}_{}_inf_{}.mhd'.format(result_path, current_step, idx, i))
+                            # Metrics.save_mhd(
+                            #     sr_img, '{}/{}_{}_sr_{}.mhd'.format(result_path, current_step, idx, i))
 
-                        if wandb_logger:
-                            wandb_logger.log_image(
-                                f'validation_{idx}',
-                                np.concatenate((fake_img, sr_img, hr_img), axis=1)
-                            )
+                            avg_psnr += Metrics.calculate_psnr(
+                                sr_img, hr_img)
 
-                    avg_psnr = avg_psnr / idx
+                            if wandb_logger:
+                                wandb_logger.log_image(
+                                    f'validation_{idx}',
+                                    np.concatenate((fake_img, sr_img, hr_img), axis=1)
+                                )
+
+                    avg_psnr = avg_psnr / visuals['SR'].shape[0]
                     diffusion.set_new_noise_schedule(
                         opt['model']['beta_schedule']['train'], schedule_phase='train')
                     # log
@@ -199,21 +189,21 @@ if __name__ == "__main__":
             diffusion.test(continous=True)
             visuals = diffusion.get_current_visuals()
 
-            hr_img = Metrics.tensor2img(visuals['HR'])  # uint8
-            lr_img = Metrics.tensor2img(visuals['LR'])  # uint8
-            fake_img = Metrics.tensor2img(visuals['INF'])  # uint8
+            hr_img = Metrics.tensor2img(visuals['HR'])
+            lr_img = Metrics.tensor2img(visuals['LR'])
+            fake_img = Metrics.tensor2img(visuals['INF'])
 
             sr_img_mode = 'grid'
             if sr_img_mode == 'single':
                 # single img series
-                sr_img = visuals['SR']  # uint8
+                sr_img = visuals['SR']
                 sample_num = sr_img.shape[0]
                 for iter in range(0, sample_num):
                     Metrics.save_img(
                         Metrics.tensor2img(sr_img[iter]), '{}/{}_{}_sr_{}.png'.format(result_path, current_step, idx, iter))
             else:
                 # grid img
-                sr_img = Metrics.tensor2img(visuals['SR'])  # uint8
+                sr_img = Metrics.tensor2img(visuals['SR'])
                 Metrics.save_img(
                     sr_img, '{}/{}_{}_sr_process.png'.format(result_path, current_step, idx))
                 Metrics.save_img(
