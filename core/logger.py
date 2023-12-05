@@ -67,7 +67,8 @@ def parse(args):
         opt['model']['beta_schedule']['train']['n_timestep'] = 10
         opt['model']['beta_schedule']['val']['n_timestep'] = 10
         opt['datasets']['train']['data_len'] = 6
-        opt['datasets']['val']['data_len'] = 3
+        opt['datasets']['val1']['data_len'] = 3
+        opt['datasets']['val2']['data_len'] = 3
 
     # W&B Logging
     try:

@@ -35,12 +35,12 @@ class LRHRDataset(Dataset):
                 self.data_len = min(self.data_len, self.dataset_len)
         elif datatype == 'mhd':
             self.sr_path = Util.get_paths_from_mhds(
-                '{}/sr_{}_{}_mhd2'.format(dataroot, l_resolution, r_resolution))
+                '{}/sr_{}_{}'.format(dataroot, l_resolution, r_resolution))
             self.hr_path = Util.get_paths_from_mhds(
-                '{}/hr_{}_mhd2'.format(dataroot, r_resolution))
+                '{}/hr_{}'.format(dataroot, r_resolution))
             if self.need_LR:
                 self.lr_path = Util.get_paths_from_mhds(
-                    '{}/lr_{}_mhd2'.format(dataroot, l_resolution))
+                    '{}/lr_{}'.format(dataroot, l_resolution))
             self.dataset_len = len(self.hr_path)
             if self.data_len <= 0:
                 self.data_len = self.dataset_len

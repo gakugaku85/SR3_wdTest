@@ -16,24 +16,34 @@
         "train": {
             "name": "testImg",
             "mode": "HR", // whether need LR img
-            "dataroot": "/take/gaku/WDtest/images/sigma32",
+            "dataroot": "/take/gaku/WDtest/images/sigma128",
             "datatype": "mhd", //lmdb or img, path of img files
             "l_resolution": 16, // low resolution need to super_resolution
             "r_resolution": 64, // high resolution
-            "batch_size": 30,
+            "batch_size": 120,
             "num_workers": 8,
             "use_shuffle": true,
             "data_len": -1 // -1 represents all data used in train
         },
-        "val": {
+        "val1": {
             "name": "testImg",
             "mode": "HR",
-            "dataroot": "/take/gaku/WDtest/images/sigma32",
+            "dataroot": "/take/gaku/WDtest/images/sigma128_val1",
             "datatype": "mhd", //lmdb or img, path of img files
             "l_resolution": 16,
             "r_resolution": 64,
-            "batch_size": 180,
-            "data_len": 180 // data length in validation
+            "batch_size": 30,
+            "data_len": -1 // data length in validation
+        },
+        "val2": {
+            "name": "testImg",
+            "mode": "HR",
+            "dataroot": "/take/gaku/WDtest/images/sigma128_val2",
+            "datatype": "mhd", //lmdb or img, path of img files
+            "l_resolution": 16,
+            "r_resolution": 64,
+            "batch_size": 30,
+            "data_len": -1 // data length in validation
         }
     },
     "model": {
@@ -79,7 +89,7 @@
     "train": {
         "n_iter": 1000000,
         "val_freq": 1e2,
-        "save_checkpoint_freq": 1e4,
+        "save_checkpoint_freq": 200,
         "print_freq": 10,
         "optimizer": {
             "type": "adam",
