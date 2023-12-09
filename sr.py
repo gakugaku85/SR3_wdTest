@@ -112,7 +112,6 @@ if __name__ == "__main__":
                     train_out_path = '{}/{}/train'.format(opt['path']['results'], current_epoch)
                     train_psnr = 0.0
                     os.makedirs(train_out_path, exist_ok=True)
-                    logger.info("<print_train_test>")
                     diffusion.test(continous=False)
                     visuals = diffusion.get_current_visuals()
                     for i in range(visuals['SR'].shape[0]):
@@ -157,7 +156,7 @@ if __name__ == "__main__":
                         val_psnr.append(avg_psnr)
 
                         # log
-                        logger.info('# Validation # PSNR: {:.4e}'.format(avg_psnr))
+                        logger.info('# Validation{} # PSNR: {:.4e}'.format(val_i ,avg_psnr))
                         logger_val = logging.getLogger('val')  # validation logger
                         logger_val.info('<epoch:{:3d}, iter:{:8,d}> psnr: {:.4e}'.format(
                             current_epoch, current_step, avg_psnr))
@@ -185,7 +184,6 @@ if __name__ == "__main__":
             if wandb_logger:
                 wandb_logger.log_metrics({'epoch': current_epoch-1})
 
-        # save model
         logger.info('End of training.')
     # else:
     #     logger.info('Begin Model Evaluation.')

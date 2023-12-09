@@ -6,6 +6,8 @@ from inspect import isfunction
 from functools import partial
 import numpy as np
 from tqdm import tqdm
+from gudhi.wasserstein import wasserstein_distance
+import gudhi as gd
 
 
 def _warmup_beta(linear_start, linear_end, n_timestep, warmup_frac):
@@ -60,6 +62,37 @@ def default(val, d):
         return val
     return d() if isfunction(d) else d
 
+def persistent_homology(image_data, output_file_name="output"):
+    """Computes and visualizes the persistent homology for the given image data."""
+    cc = gd.CubicalComplex(
+        dimensions=image_data.shape, top_dimensional_cells=1 - image_data.flatten()
+    )
+    persistence = cc.persistence()
+
+    for idx, (birth, death) in enumerate(persistence):
+        if death[1] == float("inf"):
+            persistence[idx] = (birth, (death[0], image_data.max()))
+
+    #Separate the list by number of bets
+    hole_array = []
+    connect_array = []
+    for point in persistence:
+        if point[0] == 1:
+            hole_array.append(point[1])
+        else:
+            connect_array.append(point[1])
+    return np.array(hole_array), np.array(connect_array)
+
+def cul_wd_loss(hr, sr):
+    losses = []
+    for i in range(hr.shape[0]):
+        hr_img = hr[i, :, :, :].detach().float().cpu().numpy()
+        sr_img = sr[i, :, :, :].detach().float().cpu().numpy()
+        hr_hole, hr_connect = persistent_homology(hr_img)
+        sr_hole, sr_connect = persistent_homology(sr_img)
+        cost = wasserstein_distance(hr_hole, sr_hole) + wasserstein_distance(hr_connect, sr_connect)
+        losses.append(cost)
+    return sum(losses)/len(losses)
 
 class GaussianDiffusion(nn.Module):
     def __init__(
@@ -68,6 +101,8 @@ class GaussianDiffusion(nn.Module):
         image_size,
         channels=3,
         loss_type='l1',
+        loss_name='wd',
+        under_step_wd_loss=500,
         conditional=True,
         schedule_opt=None
     ):
@@ -76,6 +111,8 @@ class GaussianDiffusion(nn.Module):
         self.image_size = image_size
         self.denoise_fn = denoise_fn
         self.loss_type = loss_type
+        self.loss_name = loss_name
+        self.under_step_wd_loss = under_step_wd_loss
         self.conditional = conditional
         if schedule_opt is not None:
             pass
@@ -242,8 +279,22 @@ class GaussianDiffusion(nn.Module):
             x_recon = self.denoise_fn(
                 torch.cat([x_in['SR'], x_noisy], dim=1), continuous_sqrt_alpha_cumprod)
 
-        loss = self.loss_func(noise, x_recon)
+        self.wd_loss = torch.tensor(0.0).to(x_start.device)
+        if t < self.under_step_wd_loss:
+            batch_size = x_start.shape[0]
+            noise_level = torch.FloatTensor([self.sqrt_alphas_cumprod_prev[t]]).repeat(batch_size, 1).to(x_start.device)
+            denoise_img = self.predict_start_from_noise(
+                x_noisy, t=t-1, noise=self.denoise_fn(torch.cat([x_in['SR'], x_noisy], dim=1), noise_level))
+
+            self.wd_loss = cul_wd_loss(x_in['HR'], denoise_img)
+
+        self.origin_loss = self.loss_func(noise, x_recon)
+
+        loss = self.origin_loss + self.wd_loss
         return loss
 
     def forward(self, x, *args, **kwargs):
         return self.p_losses(x, *args, **kwargs)
+
+    def get_each_loss(self):
+        return self.origin_loss, self.wd_loss

@@ -1,4 +1,7 @@
-FROM nvidia/cuda:10.1-cudnn8-devel-ubuntu18.04
+FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
+
+ENV TZ=Asia/Tokyo
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 RUN apt-get update -y && \
     apt-get install -y --no-install-recommends \
@@ -17,20 +20,8 @@ RUN apt-get update --fix-missing && \
     apt-get install -y software-properties-common vim curl unzip htop openssh-server wget procps
 
 RUN pip3 install --upgrade pip setuptools
-RUN pip3 install --no-cache-dir joblib numpy tqdm pillow scipy joblib matplotlib scikit-image argparse SimpleITK pyyaml pandas pydicom scikit-learn
-RUN pip3 install torch==1.8.0+cu111 torchvision==0.9.0+cu111 torchaudio==0.8.0 -f https://download.pytorch.org/whl/torch_stable.html
+RUN pip3 install --no-cache-dir joblib numpy tqdm pillow scipy joblib matplotlib scikit-image argparse SimpleITK pyyaml pandas pydicom scikit-learn natsort opencv-python-headless wandb lmdb gudhi pot tensorboardX
+RUN pip3 install torch==2.1.0+cu118 torchvision==0.16.0+cu118 -f https://download.pytorch.org/whl/torch_stable.html
 
-
-RUN mkdir /var/run/sshd
-RUN echo 'root:gakugaku' | chpasswd
-# RUN echo '\nPermitRootLogin yes' >> /etc/ssh/sshd_config
-RUN sed -i 's/PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
-RUN sed 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' -i /etc/pam.d/sshd
-
-# SSH接続のための設定です。
-ENV NOTVISIBLE "in users profile"
-RUN echo "export VISIBLE=now" >> /etc/profile
-
-# runしたときにSSH接続を始められるようにします。
-EXPOSE 22
-CMD ["/usr/sbin/sshd", "-D"]
+ARG HOSTNAME
+ENV GPU_NAME=$HOSTNAME

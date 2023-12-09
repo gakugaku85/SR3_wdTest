@@ -54,8 +54,12 @@ class DDPM(BaseModel):
         l_pix.backward()
         self.optG.step()
 
+        origin_loss, wd_loss = self.netG.get_each_loss()
+
         # set log
-        self.log_dict['l_pix'] = l_pix.item()
+        self.log_dict['loss'] = l_pix.item()
+        self.log_dict['origin_loss'] = origin_loss.item()
+        self.log_dict['wd_loss'] = wd_loss.item()
 
     def test(self, continous=False):
         self.netG.eval()

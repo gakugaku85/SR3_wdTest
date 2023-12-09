@@ -60,12 +60,12 @@ def parse(args):
 
     # debug
     if 'debug' in opt['name']:
-        opt['train']['val_freq'] = 2
+        opt['train']['val_freq'] = 10000
         opt['train']['print_freq'] = 2
-        opt['train']['save_checkpoint_freq'] = 3
+        opt['train']['save_checkpoint_freq'] = 1000000
         opt['datasets']['train']['batch_size'] = 2
-        opt['model']['beta_schedule']['train']['n_timestep'] = 10
-        opt['model']['beta_schedule']['val']['n_timestep'] = 10
+        opt['model']['beta_schedule']['train']['n_timestep'] = 2000
+        opt['model']['beta_schedule']['val']['n_timestep'] = 2000
         opt['datasets']['train']['data_len'] = 6
         opt['datasets']['val1']['data_len'] = 3
         opt['datasets']['val2']['data_len'] = 3
