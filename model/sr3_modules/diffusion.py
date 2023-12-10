@@ -8,6 +8,7 @@ import numpy as np
 from tqdm import tqdm
 from gudhi.wasserstein import wasserstein_distance
 import gudhi as gd
+import cv2
 
 
 def _warmup_beta(linear_start, linear_end, n_timestep, warmup_frac):
@@ -266,8 +267,7 @@ class GaussianDiffusion(nn.Module):
                 size=b
             )
         ).to(x_start.device)
-        continuous_sqrt_alpha_cumprod = continuous_sqrt_alpha_cumprod.view(
-            b, -1)
+        continuous_sqrt_alpha_cumprod = continuous_sqrt_alpha_cumprod.view(b, -1)
 
         noise = default(noise, lambda: torch.randn_like(x_start))
         x_noisy = self.q_sample(
@@ -278,23 +278,24 @@ class GaussianDiffusion(nn.Module):
         else:
             x_recon = self.denoise_fn(
                 torch.cat([x_in['SR'], x_noisy], dim=1), continuous_sqrt_alpha_cumprod)
-
-        self.wd_loss = torch.tensor(0.0).to(x_start.device)
-        if t < self.under_step_wd_loss:
-            batch_size = x_start.shape[0]
-            noise_level = torch.FloatTensor([self.sqrt_alphas_cumprod_prev[t]]).repeat(batch_size, 1).to(x_start.device)
-            denoise_img = self.predict_start_from_noise(
-                x_noisy, t=t-1, noise=self.denoise_fn(torch.cat([x_in['SR'], x_noisy], dim=1), noise_level))
-
-            self.wd_loss = cul_wd_loss(x_in['HR'], denoise_img)
-
         self.origin_loss = self.loss_func(noise, x_recon)
-
-        loss = self.origin_loss + self.wd_loss
+        if self.loss_name == 'wd':
+            self.wd_loss = torch.tensor(0.0).to(x_start.device)
+            if t < self.under_step_wd_loss:
+                denoise_img = self.predict_start_from_noise(x_noisy, t=t-1, noise=x_recon)
+                # concat_img = torch.cat([x_in['HR'], x_in['SR'], x_noisy, denoise_img], dim=3)
+                # cv2.imwrite("image/{}.png".format(t), concat_img.detach().float().cpu().numpy()[0, 0, :, :]*255)
+                self.wd_loss = cul_wd_loss(x_in['HR'], denoise_img)
+            loss = self.origin_loss + self.wd_loss
+        elif self.loss_name == 'original':
+            loss = self.origin_loss
         return loss
 
     def forward(self, x, *args, **kwargs):
         return self.p_losses(x, *args, **kwargs)
 
     def get_each_loss(self):
-        return self.origin_loss, self.wd_loss
+        if self.loss_name == 'wd':
+            return self.origin_loss, self.wd_loss
+        elif self.loss_name == 'original':
+            return self.origin_loss, torch.tensor(0.0).to(self.origin_loss.device)
