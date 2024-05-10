@@ -9,6 +9,7 @@ from tqdm import tqdm
 from gudhi.wasserstein import wasserstein_distance
 import gudhi as gd
 import cv2
+import time
 
 
 def _warmup_beta(linear_start, linear_end, n_timestep, warmup_frac):
@@ -285,7 +286,10 @@ class GaussianDiffusion(nn.Module):
                 denoise_img = self.predict_start_from_noise(x_noisy, t=t-1, noise=x_recon)
                 # concat_img = torch.cat([x_in['HR'], x_in['SR'], x_noisy, denoise_img], dim=3)
                 # cv2.imwrite("image/{}.png".format(t), concat_img.detach().float().cpu().numpy()[0, 0, :, :]*255)
+                start_time = time.time()
                 self.wd_loss = cul_wd_loss(x_in['HR'], denoise_img)
+                end_time = time.time()
+                print("wd loss time: ", end_time - start_time)
             loss = self.origin_loss + self.wd_loss
         elif self.loss_name == 'original':
             loss = self.origin_loss

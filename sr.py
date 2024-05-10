@@ -9,14 +9,15 @@ from core.wandb_logger import WandbLogger
 from tensorboardX import SummaryWriter
 import os
 import numpy as np
+import time
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', type=str, default='config/sr_sr3_16_128.json',
+    parser.add_argument('-c', '--config', type=str, default='config/wd_sr3_16_64.json',
                         help='JSON file for configuration')
     parser.add_argument('-p', '--phase', type=str, choices=['train', 'val'],
                         help='Run either train(training) or val(generation)', default='train')
-    parser.add_argument('-gpu', '--gpu_ids', type=str, default=None)
+    parser.add_argument('-gpu', '--gpu_ids', type=str, default="0")
     parser.add_argument('-debug', '-d', action='store_true')
     parser.add_argument('-enable_wandb', action='store_true')
     parser.add_argument('-log_wandb_ckpt', action='store_true')
@@ -83,10 +84,14 @@ if __name__ == "__main__":
     diffusion.set_new_noise_schedule(
         opt['model']['beta_schedule'][opt['phase']], schedule_phase=opt['phase'])
     early_stop = True
+
+    times = []
+
     if opt['phase'] == 'train':
         while current_step < n_iter or early_stop:
             current_epoch += 1
             for _, train_data in enumerate(train_loader):
+                start_time = time.time()
                 current_step += 1
                 if current_step > n_iter:
                     break
@@ -104,6 +109,10 @@ if __name__ == "__main__":
 
                     if wandb_logger:
                         wandb_logger.log_metrics(logs)
+                end_time = time.time()
+
+                times.append(end_time - start_time)
+                print("time average{}, {}".format(current_step, np.mean(times)))
 
                 # validation
                 if current_step % opt['train']['val_freq'] == 0:
