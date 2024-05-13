@@ -7,6 +7,9 @@ from functools import partial
 import numpy as np
 from tqdm import tqdm
 from gudhi.wasserstein import wasserstein_distance
+from torch_topological.nn import WassersteinDistance
+from torch_topological.nn import CubicalComplex
+from torch_topological.nn import VietorisRipsComplex
 import gudhi as gd
 import cv2
 import time
@@ -125,6 +128,10 @@ class GaussianDiffusion(nn.Module):
             self.loss_func = nn.L1Loss(reduction='sum').to(device)
         elif self.loss_type == 'l2':
             self.loss_func = nn.MSELoss(reduction='sum').to(device)
+        elif self.loss_type == 'wd':
+            self.cubical_complex = CubicalComplex().to(device)
+            self.loss_func = nn.L1Loss(reduction='sum').to(device)
+            self.wd_loss_func = WassersteinDistance(q=2).to(device)
         else:
             raise NotImplementedError()
 
@@ -284,10 +291,13 @@ class GaussianDiffusion(nn.Module):
             self.wd_loss = torch.tensor(0.0).to(x_start.device)
             if t < self.under_step_wd_loss:
                 denoise_img = self.predict_start_from_noise(x_noisy, t=t-1, noise=x_recon)
-                # concat_img = torch.cat([x_in['HR'], x_in['SR'], x_noisy, denoise_img], dim=3)
-                # cv2.imwrite("image/{}.png".format(t), concat_img.detach().float().cpu().numpy()[0, 0, :, :]*255)
                 start_time = time.time()
-                self.wd_loss = cul_wd_loss(x_in['HR'], denoise_img)
+                # self.wd_loss = cul_wd_loss(x_in['HR'], denoise_img)
+
+                per_hr = self.cubical_complex(x_in['HR'])[0][0]
+                per_sr = self.cubical_complex(denoise_img)[0][0]
+                self.wd_loss = self.wd_loss_func(per_hr, per_sr)
+
                 end_time = time.time()
                 print("wd loss time: ", end_time - start_time)
             loss = self.origin_loss + self.wd_loss

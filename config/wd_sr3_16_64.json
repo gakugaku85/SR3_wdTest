@@ -83,7 +83,7 @@
         "diffusion": {
             "image_size": 64,
             "channels": 1, //sample channel
-            "loss_func": "l1",
+            "loss_func": "wd",
             "loss_name": "wd",  //wd or original
             "conditional": true, // unconditional generation or unconditional generation(super_resolution)
             "under_step_wd_loss": 2000
