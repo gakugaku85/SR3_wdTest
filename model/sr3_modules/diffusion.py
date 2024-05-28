@@ -9,7 +9,8 @@ from tqdm import tqdm
 from gudhi.wasserstein import wasserstein_distance
 from torch_topological.nn import WassersteinDistance
 from torch_topological.nn import CubicalComplex
-from torch_topological.nn import VietorisRipsComplex
+from topologylayer.nn import SumBarcodeLengths, PartialSumBarcodeLengths
+from topologylayer.nn import LevelSetLayer2D
 import gudhi as gd
 import cv2
 import time
@@ -58,6 +59,56 @@ def make_beta_schedule(schedule, n_timestep, linear_start=1e-4, linear_end=2e-2,
 
 # gaussian diffusion trainer class
 
+
+class WDLoss_topoLayer(nn.Module):
+    def __init__(self, size):
+        super(WDLoss_topoLayer, self).__init__()
+        self.pdfn = LevelSetLayer2D(size=size)
+        self.wdfn = WassersteinDistance(q=2)
+
+    def forward(self, hr, sr):
+        time1 = time.time()
+        dgms_hr = self.calc_complex_batch(hr)
+        dgms_sr = self.calc_complex_batch(sr)
+        time2 = time.time()
+        wd_loss = torch.tensor(0.0).to(hr.device)
+        print("topo layer simplicial persistence time: ", time2 - time1)
+        return wd_loss
+
+    def calc_complex_batch(self, batch):
+        dgms = []
+        for img in batch:
+            dgm = self.pdfn(1 - img)
+            dgm_persistence = []
+            for i in range(len(dgm)):
+                cpu_dgm = dgm[i].cpu().detach().numpy()
+                for j in range(len(cpu_dgm)):
+                    if cpu_dgm[j][0] != cpu_dgm[j][1]:
+                        dgm_persistence.append((i, (cpu_dgm[j][0], cpu_dgm[j][1])))
+            dgms.append(dgm_persistence)
+
+        return dgms
+
+class torch_topo_wd(nn.Module):
+    def __init__(self):
+        super(torch_topo_wd, self).__init__()
+        self.cubical_complex = CubicalComplex()
+        self.wd_loss_func = WassersteinDistance(q=2)
+
+    def forward(self, hr, sr):
+        time1 = time.time()
+        per_hr = self.cubical_complex(hr)
+        per_sr = self.cubical_complex(sr)
+        time2 = time.time()
+        wd_loss = []
+        for i in range(hr.shape[0]):
+            wd_loss.append(self.wd_loss_func(per_hr[i][0], per_sr[i][0]))
+        wd_loss_sum = sum(wd_loss)/len(wd_loss)
+        end_time = time.time()
+        print("torch_topo cubical persistence time: ", time2 - time1)
+        print("torch_topo wd time: ", end_time - time2)
+        return wd_loss_sum
+
 def exists(x):
     return x is not None
 
@@ -90,13 +141,22 @@ def persistent_homology(image_data, output_file_name="output"):
 
 def cul_wd_loss(hr, sr):
     losses = []
+    per_time = []
+    wd_time = []
     for i in range(hr.shape[0]):
-        hr_img = hr[i, :, :, :].detach().float().cpu().numpy()
-        sr_img = sr[i, :, :, :].detach().float().cpu().numpy()
+        hr_img = hr[i].detach().float().cpu().numpy()
+        sr_img = sr[i].detach().float().cpu().numpy()
+        time1 = time.time()
         hr_hole, hr_connect = persistent_homology(hr_img)
         sr_hole, sr_connect = persistent_homology(sr_img)
+        time2 = time.time()
         cost = wasserstein_distance(hr_hole, sr_hole) + wasserstein_distance(hr_connect, sr_connect)
+        end_time = time.time()
+        per_time.append(time2 - time1)
+        wd_time.append(end_time - time2)
         losses.append(cost)
+    print("gudhi cubical persistence time: ", sum(per_time))
+    print("gudhi wd time: ", sum(wd_time))
     return sum(losses)/len(losses)
 
 class GaussianDiffusion(nn.Module):
@@ -129,9 +189,9 @@ class GaussianDiffusion(nn.Module):
         elif self.loss_type == 'l2':
             self.loss_func = nn.MSELoss(reduction='sum').to(device)
         elif self.loss_type == 'wd':
-            self.cubical_complex = CubicalComplex().to(device)
             self.loss_func = nn.L1Loss(reduction='sum').to(device)
-            self.wd_loss_func = WassersteinDistance(q=2).to(device)
+            self.loss_func2 = torch_topo_wd().to(device)
+            self.loss_func3 = WDLoss_topoLayer(size=(64,64)).to(device)
         else:
             raise NotImplementedError()
 
@@ -291,15 +351,13 @@ class GaussianDiffusion(nn.Module):
             self.wd_loss = torch.tensor(0.0).to(x_start.device)
             if t < self.under_step_wd_loss:
                 denoise_img = self.predict_start_from_noise(x_noisy, t=t-1, noise=x_recon)
-                start_time = time.time()
-                # self.wd_loss = cul_wd_loss(x_in['HR'], denoise_img)
 
-                per_hr = self.cubical_complex(x_in['HR'])[0][0]
-                per_sr = self.cubical_complex(denoise_img)[0][0]
-                self.wd_loss = self.wd_loss_func(per_hr, per_sr)
+                self.wd_loss = cul_wd_loss(x_in['HR'], denoise_img)
 
-                end_time = time.time()
-                print("wd loss time: ", end_time - start_time)
+                self.wd_loss = self.loss_func2(x_in['HR'], denoise_img)
+
+                self.wd_loss = self.loss_func3(x_in['HR'], denoise_img)
+
             loss = self.origin_loss + self.wd_loss
         elif self.loss_name == 'original':
             loss = self.origin_loss
