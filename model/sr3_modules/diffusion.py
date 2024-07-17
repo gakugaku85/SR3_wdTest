@@ -7,14 +7,13 @@ from functools import partial
 import numpy as np
 from tqdm import tqdm
 from gudhi.wasserstein import wasserstein_distance
-from torch_topological.nn import WassersteinDistance
 from torch_topological.nn import CubicalComplex
-from topologylayer.nn import SumBarcodeLengths, PartialSumBarcodeLengths
-from topologylayer.nn import LevelSetLayer2D
+from torch_topological.nn import WassersteinDistance
 import gudhi as gd
 import cv2
 import time
 import threading
+from queue import Queue
 
 
 def _warmup_beta(linear_start, linear_end, n_timestep, warmup_frac):
@@ -60,6 +59,57 @@ def make_beta_schedule(schedule, n_timestep, linear_start=1e-4, linear_end=2e-2,
 
 # gaussian diffusion trainer class
 
+# class TopologicalWDLoss(nn.Module):
+#     def __init__(self):
+#         super(TopologicalWDLoss, self).__init__()
+#         self.cubical = CubicalComplex()
+#         self.wd_loss_func = WassersteinDistance(q=2)
+
+#     def forward(self, hr, sr):
+#         loss = 0.0
+
+#         for x, y in zip(hr, sr):
+#             x = x.squeeze()
+#             y = y.squeeze()
+
+#             per_hr = self.cubical(x)[0]
+#             per_sr = self.cubical(y)[0]
+#             wd_loss = self.wd_loss_func(per_hr, per_sr)
+#             loss += wd_loss
+#         return loss
+
+class TopologicalWDLoss(nn.Module):
+    def __init__(self):
+        super(TopologicalWDLoss, self).__init__()
+        self.cubical = CubicalComplex()
+        self.wd_loss_func = WassersteinDistance(q=2)
+
+    def process_batch_item(self, x, y, result_queue):
+        x = x.squeeze()
+        y = y.squeeze()
+
+        per_hr = self.cubical(x)[0]
+        per_sr = self.cubical(y)[0]
+        wd_loss = self.wd_loss_func(per_hr, per_sr)
+        result_queue.put(wd_loss)
+
+    def forward(self, hr, sr):
+        threads = []
+        result_queue = Queue()
+
+        for x, y in zip(hr, sr):
+            thread = threading.Thread(target=self.process_batch_item, args=(x, y, result_queue))
+            thread.start()
+            threads.append(thread)
+
+        for thread in threads:
+            thread.join()
+
+        loss = 0.0
+        while not result_queue.empty():
+            loss += result_queue.get()
+
+        return loss
 
 def exists(x):
     return x is not None
@@ -90,26 +140,6 @@ def persistent_homology(image_data, output_file_name="output", device=torch.devi
         else:
             connect_array.append(point[1])
     return np.array(hole_array), np.array(connect_array)
-
-def cul_wd_loss_2(hr, sr):
-    losses = []
-    per_time = []
-    wd_time = []
-    for i in range(hr.shape[0]):
-        hr_img = hr[i].detach().float().cpu().numpy()
-        sr_img = sr[i].detach().float().cpu().numpy()
-        time1 = time.time()
-        hr_hole, hr_connect = persistent_homology(hr_img)
-        sr_hole, sr_connect = persistent_homology(sr_img)
-        time2 = time.time()
-        cost = wasserstein_distance(hr_hole, sr_hole) + wasserstein_distance(hr_connect, sr_connect)
-        end_time = time.time()
-        per_time.append(time2 - time1)
-        wd_time.append(end_time - time2)
-        losses.append(cost)
-    print("gudhi cubical persistence time: ", sum(per_time))
-    print("gudhi wd time: ", sum(wd_time))
-    return sum(losses)/len(losses)
 
 class WassersteinDistanceLoss(nn.Module):
     def __init__(self):
@@ -180,6 +210,7 @@ class GaussianDiffusion(nn.Module):
             self.loss_func = nn.MSELoss(reduction='sum').to(device)
         elif self.loss_type == 'wd':
             self.loss_func = nn.L1Loss(reduction='sum').to(device)
+            self.loss_func2 = TopologicalWDLoss().to(device)
             self.loss_wd = WassersteinDistanceLoss().to(device)
         else:
             raise NotImplementedError()
@@ -340,11 +371,10 @@ class GaussianDiffusion(nn.Module):
             self.wd_loss = torch.tensor(0.0).to(x_start.device)
             if t < self.under_step_wd_loss:
                 denoise_img = self.predict_start_from_noise(x_noisy, t=t-1, noise=x_recon)
-
-                self.wd_loss = self.loss_wd(x_in['HR'], denoise_img)
-                # self.wd_loss = cul_wd_loss_2(x_in['HR'], denoise_img)
-                print("wd loss: ", self.wd_loss)
+                # self.wd_loss = self.loss_wd(x_in['HR'], denoise_img)
+                self.wd_loss = self.loss_func2(x_in['HR'], denoise_img)
             loss = self.origin_loss + self.wd_loss
+            print("wd loss: ", self.wd_loss)
             print("origin loss: ", self.origin_loss)
             print("total loss: ", loss)
         elif self.loss_name == 'original':

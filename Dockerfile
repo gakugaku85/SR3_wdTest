@@ -22,5 +22,4 @@ RUN apt-get update --fix-missing && \
 RUN pip3 install --upgrade pip setuptools
 RUN pip3 install --no-cache-dir joblib numpy tqdm pillow scipy joblib matplotlib scikit-image argparse SimpleITK pyyaml pandas pydicom scikit-learn natsort opencv-python-headless wandb lmdb gudhi tensorboardX ninja pytest pot dionysus
 RUN pip3 install torch==1.13.1+cu117 torchvision==0.14.1+cu117 -f https://download.pytorch.org/whl/torch_stable.html
-RUN pip3 install torch_topological git+https://github.com/bruel-gabrielsson/TopologyLayer.git
-
+RUN pip3 install -U https://github.com/PythonOT/POT/archive/master.zip
