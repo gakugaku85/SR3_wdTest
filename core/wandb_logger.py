@@ -12,7 +12,7 @@ class WandbLogger:
                 "To use the Weights and Biases Logger please install wandb."
                 "Run `pip install wandb` to install it."
             )
-        
+
         self._wandb = wandb
 
         # Initialize a W&B run
@@ -20,14 +20,14 @@ class WandbLogger:
             self._wandb.init(
                 project=opt['wandb']['project'],
                 config=opt,
-                dir='./experiments'
+                dir='./experiment'
             )
 
         self.config = self._wandb.config
 
         if self.config.get('log_eval', None):
-            self.eval_table = self._wandb.Table(columns=['fake_image', 
-                                                         'sr_image', 
+            self.eval_table = self._wandb.Table(columns=['fake_image',
+                                                         'sr_image',
                                                          'hr_image',
                                                          'psnr',
                                                          'ssim'])
@@ -35,13 +35,13 @@ class WandbLogger:
             self.eval_table = None
 
         if self.config.get('log_infer', None):
-            self.infer_table = self._wandb.Table(columns=['fake_image', 
-                                                         'sr_image', 
+            self.infer_table = self._wandb.Table(columns=['fake_image',
+                                                         'sr_image',
                                                          'hr_image'])
         else:
             self.infer_table = None
 
-    def log_metrics(self, metrics, commit=True): 
+    def log_metrics(self, metrics, commit=True):
         """
         Log train/validation metrics onto W&B.
 
@@ -53,7 +53,7 @@ class WandbLogger:
         """
         Log image array onto W&B.
 
-        key_name: name of the key 
+        key_name: name of the key
         image_array: numpy array of image.
         """
         self._wandb.log({key_name: self._wandb.Image(image_array)})
@@ -62,7 +62,7 @@ class WandbLogger:
         """
         Log list of image array onto W&B
 
-        key_name: name of the key 
+        key_name: name of the key
         list_images: list of numpy image arrays
         """
         self._wandb.log({key_name: [self._wandb.Image(img) for img in list_images]})
@@ -71,7 +71,7 @@ class WandbLogger:
         """
         Log the model checkpoint as W&B artifacts
 
-        current_epoch: the current epoch 
+        current_epoch: the current epoch
         current_step: the current batch step
         """
         model_artifact = self._wandb.Artifact(

@@ -14,6 +14,7 @@ import cv2
 import time
 import threading
 from queue import Queue
+from skimage.filters import frangi
 
 
 def _warmup_beta(linear_start, linear_end, n_timestep, warmup_frac):
@@ -120,64 +121,76 @@ def default(val, d):
         return val
     return d() if isfunction(d) else d
 
+def match_cofaces_with_gudhi(image_data, cofaces):
+    height, width = image_data.shape
+    result = []
+
+    for dim, pairs in enumerate(cofaces[0]):
+        for birth, death in pairs:
+            birth_y, birth_x = np.unravel_index(birth, (height, width))
+            death_y, death_x = np.unravel_index(death, (height, width))
+            pers = (1.00-image_data.ravel()[birth], 1.00-image_data.ravel()[death])
+            result.append((dim, pers,((birth_y, birth_x), (death_y, death_x))))
+
+    for dim, births in enumerate(cofaces[1]):
+        for birth in births:
+            birth_y, birth_x = np.unravel_index(birth, (height, width))
+            pers = (1.00-image_data.ravel()[birth], 1.0)
+            result.append((dim, pers, ((birth_y, birth_x), None)))
+
+    return result
+
 def persistent_homology(image_data, output_file_name="output", device=torch.device('cuda:0')):
     """Computes and visualizes the persistent homology for the given image data."""
     cc = gd.CubicalComplex(
         dimensions=image_data.shape, top_dimensional_cells=1 - image_data.flatten()
     )
     persistence = cc.persistence()
+    cofaces = cc.cofaces_of_persistence_pairs()
+    result = match_cofaces_with_gudhi(shape=image_data.shape, cofaces=cofaces)
 
-    for idx, (birth, death) in enumerate(persistence):
-        if death[1] == float("inf"):
-            persistence[idx] = (birth, (death[0], image_data.max()))
+    frangi_img = frangi(1-image_data)
 
-    #Separate the list by number of bets
-    hole_array = []
-    connect_array = []
-    for point in persistence:
-        if point[0] == 1:
-            hole_array.append(point[1])
-        else:
-            connect_array.append(point[1])
-    return np.array(hole_array), np.array(connect_array)
+    new_result = []
+
+    for dim, (birth, death) , coordinates in result:
+        if dim == 1:
+            continue
+        distance = np.abs(birth - death) / np.sqrt(2)
+        weight = distance * frangi_img[coordinates[0][0], coordinates[0][1]]
+
+        weight_threshold = 0.01
+        if weight > weight_threshold:
+            new_result.append([birth, death])
+
+    return np.array(new_result)
 
 class WassersteinDistanceLoss(nn.Module):
     def __init__(self):
         super(WassersteinDistanceLoss, self).__init__()
 
-    def process_image(self, hr_img, sr_img, index, losses, per_time, wd_time):
-        time1 = time.time()
-        with torch.no_grad():
-            hr_hole, hr_connect = persistent_homology(hr_img)
-            sr_hole, sr_connect = persistent_homology(sr_img)
-        time2 = time.time()
-        cost = wasserstein_distance(hr_hole, sr_hole) + wasserstein_distance(hr_connect, sr_connect)
-        end_time = time.time()
-        per_time[index] = time2 - time1
-        wd_time[index] = end_time - time2
-        losses[index] = cost
+    def process_image(self, hr_img, sr_img, index, losses):
+        hr_connect = persistent_homology(hr_img[0])
+        sr_connect = persistent_homology(sr_img[0])
+        losses[index] = wasserstein_distance(hr_connect, sr_connect)
 
     def forward(self, hr, sr):
         num_images = hr.shape[0]
         losses = [None] * num_images
-        per_time = [None] * num_images
-        wd_time = [None] * num_images
 
         threads = []
 
         for i in range(num_images):
             hr_img = hr[i].detach().float().cpu().numpy()
             sr_img = sr[i].detach().float().cpu().numpy()
-            thread = threading.Thread(target=self.process_image, args=(hr_img, sr_img, i, losses, per_time, wd_time))
+            thread = threading.Thread(target=self.process_image, args=(hr_img, sr_img, i, losses))
             threads.append(thread)
             thread.start()
 
         for thread in threads:
             thread.join()
 
-        # print("gudhi cubical persistence time: ", sum(per_time))
-        # print("gudhi wd time: ", sum(wd_time))
-        return torch.tensor(sum(losses) / len(losses)).to(hr.device)
+        return torch.tensor(sum(losses) / len(losses))
 
 class GaussianDiffusion(nn.Module):
     def __init__(
@@ -371,8 +384,8 @@ class GaussianDiffusion(nn.Module):
             self.wd_loss = torch.tensor(0.0).to(x_start.device)
             if t < self.under_step_wd_loss:
                 denoise_img = self.predict_start_from_noise(x_noisy, t=t-1, noise=x_recon)
-                # self.wd_loss = self.loss_wd(x_in['HR'], denoise_img)
-                self.wd_loss = self.loss_func2(x_in['HR'], denoise_img)
+                self.wd_loss = self.loss_wd(x_in['HR'], denoise_img)
+                # self.wd_loss = self.loss_func2(x_in['HR'], denoise_img)
             loss = self.origin_loss + self.wd_loss
             print("wd loss: ", self.wd_loss)
             print("origin loss: ", self.origin_loss)
