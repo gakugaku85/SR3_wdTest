@@ -112,7 +112,7 @@ if __name__ == "__main__":
                 end_time = time.time()
 
                 times.append(end_time - start_time)
-                # print("time average{}, {}".format(current_step, np.mean(times)))
+                print("time average{}, {}".format(current_step, np.mean(times)))
 
                 # validation
                 if current_step % opt['train']['val_freq'] == 0:

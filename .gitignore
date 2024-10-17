@@ -132,4 +132,4 @@ dmypy.json
 *.lmdb
 
 image/
-experiment/
+experiment/*

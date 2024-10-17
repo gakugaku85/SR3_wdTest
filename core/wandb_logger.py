@@ -20,7 +20,7 @@ class WandbLogger:
             self._wandb.init(
                 project=opt['wandb']['project'],
                 config=opt,
-                dir='./experiment'
+                dir='./experiments'
             )
 
         self.config = self._wandb.config
