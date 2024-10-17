@@ -12,6 +12,7 @@ from gudhi.wasserstein import wasserstein_distance
 import gudhi as gd
 import cv2
 import time
+import multiprocessing
 import threading
 from queue import Queue
 from skimage.filters import frangi
@@ -200,35 +201,60 @@ class WassersteinDistanceLoss(nn.Module):
 
     def forward(self, hr, sr):
         num_images = hr.shape[0]
-        losses = [None] * num_images
-        per_time = [None] * num_images
-        wd_time = [None] * num_images
-        gudhi_time = [None] * num_images
-        cofaces_time = [None] * num_images
-        match_time = [None] * num_images
-        frangi_time = [None] * num_images
-        filter_time = [None] * num_images
 
+        # multiprocessing.Managerを使って共有リストを作成
+        with multiprocessing.Manager() as manager:
+            # 共有リストを作成
+            losses = manager.list([None] * num_images)
+            per_time = manager.list([None] * num_images)
+            wd_time = manager.list([None] * num_images)
+            gudhi_time = manager.list([None] * num_images)
+            cofaces_time = manager.list([None] * num_images)
+            match_time = manager.list([None] * num_images)
+            frangi_time = manager.list([None] * num_images)
+            filter_time = manager.list([None] * num_images)
 
-        threads = []
+            processes = []
 
-        for i in range(num_images):
-            hr_img = hr[i].detach().float().cpu().numpy()
-            sr_img = sr[i].detach().float().cpu().numpy()
-            thread = threading.Thread(target=self.process_image, args=(hr_img, sr_img, i, losses, per_time, wd_time, gudhi_time, cofaces_time, match_time, frangi_time, filter_time))
-            threads.append(thread)
-            thread.start()
+            # 各プロセスを開始
+            for i in range(num_images):
+                hr_img = hr[i].detach().float().cpu().numpy()
+                sr_img = sr[i].detach().float().cpu().numpy()
+                process = multiprocessing.Process(target=self.process_image, args=(
+                    hr_img, sr_img, i, losses, per_time, wd_time, gudhi_time, cofaces_time, match_time, frangi_time, filter_time))
+                processes.append(process)
+                process.start()
 
-        for thread in threads:
-            thread.join()
-        print("gudhi time: ", sum(gudhi_time)/num_images)
-        print("cofaces time: ", sum(cofaces_time)/num_images)
-        print("match time: ", sum(match_time)/num_images)
-        print("frangi time: ", sum(frangi_time)/num_images)
-        print("filter time: ", sum(filter_time)/num_images)
-        print("total persistence time: ", sum(per_time)/num_images)
-        print("gudhi wd time: ", sum(wd_time)/num_images)
-        return torch.tensor(sum(losses) / num_images)
+            # 全プロセスの終了を待つ
+            for process in processes:
+                process.join()
+
+            # NoneType を除外して集計
+            gudhi_time = [t for t in gudhi_time if t is not None]
+            cofaces_time = [t for t in cofaces_time if t is not None]
+            match_time = [t for t in match_time if t is not None]
+            frangi_time = [t for t in frangi_time if t is not None]
+            filter_time = [t for t in filter_time if t is not None]
+            per_time = [t for t in per_time if t is not None]
+            wd_time = [t for t in wd_time if t is not None]
+            losses = [l for l in losses if l is not None]
+
+            if len(gudhi_time) > 0:
+                print("gudhi time: ", sum(gudhi_time) / len(gudhi_time))
+            if len(cofaces_time) > 0:
+                print("cofaces time: ", sum(cofaces_time) / len(cofaces_time))
+            if len(match_time) > 0:
+                print("match time: ", sum(match_time) / len(match_time))
+            if len(frangi_time) > 0:
+                print("frangi time: ", sum(frangi_time) / len(frangi_time))
+            if len(filter_time) > 0:
+                print("filter time: ", sum(filter_time) / len(filter_time))
+            if len(per_time) > 0:
+                print("total persistence time: ", sum(per_time) / len(per_time))
+            if len(wd_time) > 0:
+                print("gudhi wd time: ", sum(wd_time) / len(wd_time))
+
+            return torch.tensor(sum(losses) / len(losses)) if len(losses) > 0 else torch.tensor(0.0)
 
 class GaussianDiffusion(nn.Module):
     def __init__(
