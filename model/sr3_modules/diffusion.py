@@ -146,16 +146,11 @@ def persistent_homology(image_data, output_file_name="output", device=torch.devi
     cc = gd.CubicalComplex(
         dimensions=image_data.shape, top_dimensional_cells=1 - image_data.flatten()
     )
-    time1 = time.time()
     cc.persistence()
-    time2 = time.time()
     cofaces = cc.cofaces_of_persistence_pairs()
-    time3 = time.time()
     result = match_cofaces_with_gudhi(image_data=image_data, cofaces=cofaces)
-    time4 = time.time()
 
     frangi_img = frangi(1-image_data)
-    time5 = time.time()
     new_result = []
 
     for dim, (birth, death) , coordinates in result:
@@ -168,36 +163,17 @@ def persistent_homology(image_data, output_file_name="output", device=torch.devi
         if weight > weight_threshold:
             new_result.append([birth, death])
 
-    time6 = time.time()
-
-    gudhi_time = time2 - time1
-    cofaces_time = time3 - time2
-    match_time = time4 - time3
-    frangi_time = time5 - time4
-    filter_time = time6 - time5
-
-    return np.array(new_result), [gudhi_time, cofaces_time, match_time, frangi_time, filter_time]
+    return np.array(new_result)
 
 class WassersteinDistanceLoss(nn.Module):
     def __init__(self):
         super(WassersteinDistanceLoss, self).__init__()
 
-    def process_image(self, hr_img, sr_img, index, losses, per_time, wd_time, gudhi_time, cofaces_time, match_time, frangi_time, filter_time):
-        time1 = time.time()
-        hr_connect, time_res_hr = persistent_homology(hr_img[0])
-        sr_connect, time_res_sr = persistent_homology(sr_img[0])
-        time2 = time.time()
+    def process_image(self, hr_img, sr_img, index, losses):
+
+        hr_connect = persistent_homology(hr_img[0])
+        sr_connect = persistent_homology(sr_img[0])
         losses[index] = wasserstein_distance(hr_connect, sr_connect)
-        time3 = time.time()
-
-        gudhi_time[index] = time_res_hr[0]
-        cofaces_time[index] = time_res_hr[1]
-        match_time[index] = time_res_hr[2]
-        frangi_time[index] = time_res_hr[3]
-        filter_time[index] = time_res_hr[4]
-
-        per_time[index] = time2 - time1
-        wd_time[index] = time3 - time2
 
     def forward(self, hr, sr):
         num_images = hr.shape[0]
@@ -206,14 +182,6 @@ class WassersteinDistanceLoss(nn.Module):
         with multiprocessing.Manager() as manager:
             # 共有リストを作成
             losses = manager.list([None] * num_images)
-            per_time = manager.list([None] * num_images)
-            wd_time = manager.list([None] * num_images)
-            gudhi_time = manager.list([None] * num_images)
-            cofaces_time = manager.list([None] * num_images)
-            match_time = manager.list([None] * num_images)
-            frangi_time = manager.list([None] * num_images)
-            filter_time = manager.list([None] * num_images)
-
             processes = []
 
             # 各プロセスを開始
@@ -221,7 +189,7 @@ class WassersteinDistanceLoss(nn.Module):
                 hr_img = hr[i].detach().float().cpu().numpy()
                 sr_img = sr[i].detach().float().cpu().numpy()
                 process = multiprocessing.Process(target=self.process_image, args=(
-                    hr_img, sr_img, i, losses, per_time, wd_time, gudhi_time, cofaces_time, match_time, frangi_time, filter_time))
+                    hr_img, sr_img, i, losses))
                 processes.append(process)
                 process.start()
 
@@ -229,30 +197,7 @@ class WassersteinDistanceLoss(nn.Module):
             for process in processes:
                 process.join()
 
-            # NoneType を除外して集計
-            gudhi_time = [t for t in gudhi_time if t is not None]
-            cofaces_time = [t for t in cofaces_time if t is not None]
-            match_time = [t for t in match_time if t is not None]
-            frangi_time = [t for t in frangi_time if t is not None]
-            filter_time = [t for t in filter_time if t is not None]
-            per_time = [t for t in per_time if t is not None]
-            wd_time = [t for t in wd_time if t is not None]
             losses = [l for l in losses if l is not None]
-
-            if len(gudhi_time) > 0:
-                print("gudhi time: ", sum(gudhi_time) / len(gudhi_time))
-            if len(cofaces_time) > 0:
-                print("cofaces time: ", sum(cofaces_time) / len(cofaces_time))
-            if len(match_time) > 0:
-                print("match time: ", sum(match_time) / len(match_time))
-            if len(frangi_time) > 0:
-                print("frangi time: ", sum(frangi_time) / len(frangi_time))
-            if len(filter_time) > 0:
-                print("filter time: ", sum(filter_time) / len(filter_time))
-            if len(per_time) > 0:
-                print("total persistence time: ", sum(per_time) / len(per_time))
-            if len(wd_time) > 0:
-                print("gudhi wd time: ", sum(wd_time) / len(wd_time))
 
             return torch.tensor(sum(losses) / len(losses)) if len(losses) > 0 else torch.tensor(0.0)
 
