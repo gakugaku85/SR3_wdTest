@@ -7,8 +7,8 @@ from functools import partial
 import numpy as np
 from tqdm import tqdm
 from gudhi.wasserstein import wasserstein_distance
-# from torch_topological.nn import CubicalComplex
-# from torch_topological.nn import WassersteinDistance
+from model.torch_topological.nn import CubicalComplex
+from model.torch_topological.nn import WassersteinDistance
 import gudhi as gd
 import cv2
 import time
@@ -16,6 +16,7 @@ import multiprocessing
 import threading
 from queue import Queue
 from skimage.filters import frangi
+from icecream import ic
 
 
 def _warmup_beta(linear_start, linear_end, n_timestep, warmup_frac):
@@ -58,60 +59,40 @@ def make_beta_schedule(schedule, n_timestep, linear_start=1e-4, linear_end=2e-2,
         raise NotImplementedError(schedule)
     return betas
 
+class TopologicalWDLoss(nn.Module):
+    def __init__(self):
+        super(TopologicalWDLoss, self).__init__()
+        self.cubical = CubicalComplex()
+        self.wd_loss_func = WassersteinDistance(q=2)
 
-# gaussian diffusion trainer class
+    def process_batch_item(self, x, y, result_queue):
+        x = x.squeeze()
+        y = y.squeeze()
 
-# class TopologicalWDLoss(nn.Module):
-#     def __init__(self):
-#         super(TopologicalWDLoss, self).__init__()
-#         self.cubical = CubicalComplex()
-#         self.wd_loss_func = WassersteinDistance(q=2)
+        ic(x.shape, y.shape)
 
-#     def forward(self, hr, sr):
-#         loss = 0.0
+        per_hr = self.cubical(x)[0]
+        per_sr = self.cubical(y)[0]
+        wd_loss = self.wd_loss_func(per_hr, per_sr)
+        result_queue.put(wd_loss)
 
-#         for x, y in zip(hr, sr):
-#             x = x.squeeze()
-#             y = y.squeeze()
+    def forward(self, hr, sr):
+        threads = []
+        result_queue = Queue()
 
-#             per_hr = self.cubical(x)[0]
-#             per_sr = self.cubical(y)[0]
-#             wd_loss = self.wd_loss_func(per_hr, per_sr)
-#             loss += wd_loss
-#         return loss
+        for x, y in zip(hr, sr):
+            thread = threading.Thread(target=self.process_batch_item, args=(x, y, result_queue))
+            thread.start()
+            threads.append(thread)
 
-# class TopologicalWDLoss(nn.Module):
-#     def __init__(self):
-#         super(TopologicalWDLoss, self).__init__()
-#         self.cubical = CubicalComplex()
-#         self.wd_loss_func = WassersteinDistance(q=2)
+        for thread in threads:
+            thread.join()
 
-#     def process_batch_item(self, x, y, result_queue):
-#         x = x.squeeze()
-#         y = y.squeeze()
+        loss = 0.0
+        while not result_queue.empty():
+            loss += result_queue.get()
 
-#         per_hr = self.cubical(x)[0]
-#         per_sr = self.cubical(y)[0]
-#         wd_loss = self.wd_loss_func(per_hr, per_sr)
-#         result_queue.put(wd_loss)
-
-#     def forward(self, hr, sr):
-#         threads = []
-#         result_queue = Queue()
-
-#         for x, y in zip(hr, sr):
-#             thread = threading.Thread(target=self.process_batch_item, args=(x, y, result_queue))
-#             thread.start()
-#             threads.append(thread)
-
-#         for thread in threads:
-#             thread.join()
-
-#         loss = 0.0
-#         while not result_queue.empty():
-#             loss += result_queue.get()
-
-#         return loss
+        return loss
 
 def exists(x):
     return x is not None
@@ -136,70 +117,90 @@ def match_cofaces_with_gudhi(image_data, cofaces):
     for dim, births in enumerate(cofaces[1]):
         for birth in births:
             birth_y, birth_x = np.unravel_index(birth, (height, width))
-            pers = (1.00-image_data.ravel()[birth], 1.0)
+            pers = (1.0-image_data.ravel()[birth], 1.0)
             result.append((dim, pers, ((birth_y, birth_x), None)))
 
     return result
 
-def persistent_homology(image_data, output_file_name="output", device=torch.device('cuda:0')):
-    """Computes and visualizes the persistent homology for the given image data."""
-    cc = gd.CubicalComplex(
-        dimensions=image_data.shape, top_dimensional_cells=1 - image_data.flatten()
-    )
-    cc.persistence()
-    cofaces = cc.cofaces_of_persistence_pairs()
-    result = match_cofaces_with_gudhi(image_data=image_data, cofaces=cofaces)
-
-    frangi_img = frangi(1-image_data)
-    new_result = []
-
-    for dim, (birth, death) , coordinates in result:
-        if dim == 1:
-            continue
-        distance = np.abs(birth - death) / np.sqrt(2)
-        weight = distance * frangi_img[coordinates[0][0], coordinates[0][1]]
-
-        weight_threshold = 0.01
-        if weight > weight_threshold:
-            new_result.append([birth, death])
-
-    return np.array(new_result)
 
 class WassersteinDistanceLoss(nn.Module):
     def __init__(self):
         super(WassersteinDistanceLoss, self).__init__()
+        self.wd_loss_func = WassersteinDistance(q=2)
 
-    def process_image(self, hr_img, sr_img, index, losses):
+    def persistent_homology(self, image_data, image_name="SR"):
+        """Computes and visualizes the persistent homology for the given image data."""
+        cc = gd.CubicalComplex(
+            dimensions=image_data.shape, top_dimensional_cells=1 - image_data.flatten()
+        )
+        cc.persistence()
+        cofaces = cc.cofaces_of_persistence_pairs()
+        result = match_cofaces_with_gudhi(image_data=image_data, cofaces=cofaces)
 
-        hr_connect = persistent_homology(hr_img[0])
-        sr_connect = persistent_homology(sr_img[0])
-        losses[index] = wasserstein_distance(hr_connect, sr_connect)
+        frangi_img = frangi(1 - image_data)
+        new_result = []
+
+        for dim, (birth, death), coordinates in result:
+            if dim == 1:
+                continue
+            if image_name == "SR":
+                new_result.append([birth, death])
+                continue
+            distance = np.abs(birth - death) / np.sqrt(2)
+            weight = distance * frangi_img[coordinates[0][0], coordinates[0][1]]
+
+            weight_threshold = 0.01
+            if weight > weight_threshold:
+                new_result.append([birth, death])
+
+        return new_result
+
+    def process_image(self, hr_img, sr_img, index, losses, hr_connect, sr_connect):
+        hr_connect[index] = self.persistent_homology(hr_img[0], image_name="HR")
+        sr_connect[index] = self.persistent_homology(sr_img[0], image_name="SR")
 
     def forward(self, hr, sr):
         num_images = hr.shape[0]
 
         # multiprocessing.Managerを使って共有リストを作成
         with multiprocessing.Manager() as manager:
-            # 共有リストを作成
             losses = manager.list([None] * num_images)
+            hr_connect = manager.list([None] * num_images)
+            sr_connect = manager.list([None] * num_images)
             processes = []
 
-            # 各プロセスを開始
             for i in range(num_images):
                 hr_img = hr[i].detach().float().cpu().numpy()
                 sr_img = sr[i].detach().float().cpu().numpy()
-                process = multiprocessing.Process(target=self.process_image, args=(
-                    hr_img, sr_img, i, losses))
+                process = multiprocessing.Process(
+                    target=self.process_image, args=(hr_img, sr_img, i, losses, hr_connect, sr_connect)
+                )
                 processes.append(process)
                 process.start()
 
-            # 全プロセスの終了を待つ
             for process in processes:
                 process.join()
 
-            losses = [l for l in losses if l is not None]
+            # `hr_connect` と `sr_connect` を Tensor に変換
+            ic(len(hr_connect), len(hr_connect[0]), hr_connect[0][0])
+            ic(len(sr_connect), len(sr_connect[0]), sr_connect[0][0])
+            # hr_connect と sr_connect を Tensor に変換
+            # 各要素が2Dデータであることを仮定してテンソルに変換
+            hr_connect_tensor = [
+                torch.tensor(connect, dtype=torch.float32, device=hr.device) for connect in hr_connect
+            ]
+            sr_connect_tensor = [
+                torch.tensor(connect, dtype=torch.float32, device=sr.device) for connect in sr_connect
+            ]
 
-            return torch.tensor(sum(losses) / len(losses)) if len(losses) > 0 else torch.tensor(0.0)
+
+
+            # Optional: Wasserstein distance loss の計算に使う場合
+            if len(hr_connect_tensor) > 0 and len(sr_connect_tensor) > 0:
+                total_loss = self.wd_loss_func(hr_connect_tensor, sr_connect_tensor)
+                return total_loss
+
+            return torch.tensor(0.0, device=hr.device)
 
 class GaussianDiffusion(nn.Module):
     def __init__(
@@ -232,7 +233,7 @@ class GaussianDiffusion(nn.Module):
             self.loss_func = nn.MSELoss(reduction='sum').to(device)
         elif self.loss_type == 'wd':
             self.loss_func = nn.L1Loss(reduction='sum').to(device)
-            # self.loss_func2 = TopologicalWDLoss().to(device)
+            self.loss_func2 = TopologicalWDLoss().to(device)
             self.loss_wd = WassersteinDistanceLoss().to(device)
         else:
             raise NotImplementedError()
@@ -393,12 +394,13 @@ class GaussianDiffusion(nn.Module):
             self.wd_loss = torch.tensor(0.0).to(x_start.device)
             if t < self.under_step_wd_loss:
                 denoise_img = self.predict_start_from_noise(x_noisy, t=t-1, noise=x_recon)
-                self.wd_loss = self.loss_wd(x_in['HR'], denoise_img)
+                self.wd_loss = 100*self.loss_wd(x_in['HR'], denoise_img)
+                # self.wd_loss = self.loss_wd(x_in['HR'], denoise_img)
                 # self.wd_loss = self.loss_func2(x_in['HR'], denoise_img)
             loss = self.origin_loss + self.wd_loss
-            # print("wd loss: ", self.wd_loss)
-            # print("origin loss: ", self.origin_loss)
-            # print("total loss: ", loss)
+            ic(self.wd_loss)
+            ic(self.origin_loss)
+            ic(loss)
         elif self.loss_name == 'original':
             loss = self.origin_loss
         return loss

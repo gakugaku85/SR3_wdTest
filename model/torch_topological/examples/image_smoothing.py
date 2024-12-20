@@ -8,8 +8,8 @@ more to be done here.
 import numpy as np
 import matplotlib.pyplot as plt
 
-from torch_topological.nn import CubicalComplex
-from torch_topological.nn import SummaryStatisticLoss
+from model.torch_topological.nn import CubicalComplex
+from model.torch_topological.nn import SummaryStatisticLoss
 
 from sklearn.datasets import make_circles
 

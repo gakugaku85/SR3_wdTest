@@ -1,7 +1,7 @@
 """Data sets based on simple topological shapes."""
 
-from torch_topological.data import sample_from_sphere
-from torch_topological.data import sample_from_torus
+from model.torch_topological.data import sample_from_sphere
+from model.torch_topological.data import sample_from_torus
 
 from torch.utils.data import Dataset
 

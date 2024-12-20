@@ -1,11 +1,11 @@
 """Example of classifying data using topological layers."""
 
-from torch_topological.datasets import SphereVsTorus
+from model.torch_topological.datasets import SphereVsTorus
 
-from torch_topological.nn.data import make_tensor
+from model.torch_topological.nn.data import make_tensor
 
-from torch_topological.nn import VietorisRipsComplex
-from torch_topological.nn.layers import StructureElementLayer
+from model.torch_topological.nn import VietorisRipsComplex
+from model.torch_topological.nn.layers import StructureElementLayer
 
 from torch.utils.data import DataLoader
 

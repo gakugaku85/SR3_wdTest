@@ -2,7 +2,7 @@
 
 import torch
 
-from torch_topological.utils import is_iterable
+from model.torch_topological.utils import is_iterable
 
 
 class SummaryStatisticLoss(torch.nn.Module):

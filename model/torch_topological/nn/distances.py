@@ -3,7 +3,8 @@
 import ot
 import torch
 
-from torch_topological.utils import wrap_if_not_iterable
+from model.torch_topological.utils import wrap_if_not_iterable
+from icecream import ic
 
 
 class WassersteinDistance(torch.nn.Module):
@@ -108,8 +109,8 @@ class WassersteinDistance(torch.nn.Module):
         Y = wrap_if_not_iterable(Y)
 
         for pers_info in zip(X, Y):
-            D1 = pers_info[0].diagram
-            D2 = pers_info[1].diagram
+            D1 = pers_info[0]
+            D2 = pers_info[1]
 
             n = len(D1)
             m = len(D2)

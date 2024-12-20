@@ -7,8 +7,8 @@ a structured array, such as a grey-scale image.
 import numpy as np
 import matplotlib.pyplot as plt
 
-from torch_topological.nn import CubicalComplex
-from torch_topological.nn import WassersteinDistance
+from model.torch_topological.nn import CubicalComplex
+from model.torch_topological.nn import WassersteinDistance
 
 from tqdm import tqdm
 

@@ -2,8 +2,8 @@
 
 from torch import nn
 
-from torch_topological.nn import PersistenceInformation
-from torch_topological.nn.data import batch_handler
+from model.torch_topological.nn import PersistenceInformation
+from model.torch_topological.nn.data import batch_handler
 
 import gudhi
 import itertools

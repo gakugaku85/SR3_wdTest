@@ -2,12 +2,14 @@
 
 from torch import nn
 
-from torch_topological.nn import PersistenceInformation
+from model.torch_topological.nn import PersistenceInformation
 
 import gudhi
 import torch
 
 import numpy as np
+
+from icecream import ic
 
 
 class CubicalComplex(nn.Module):
@@ -171,9 +173,10 @@ class CubicalComplex(nn.Module):
         if self.superlevel:
             x = -x
 
+        ic(x)
         cubical_complex = gudhi.CubicalComplex(
             dimensions=x.shape,
-            top_dimensional_cells=x.flatten()
+            top_dimensional_cells=1 - x.flatten()
         )
 
         # We need the persistence pairs first, even though we are *not*
@@ -254,9 +257,9 @@ class CubicalComplex(nn.Module):
 
         # TODO: Most efficient way to generate diagram again?
         persistence_diagram = torch.stack((
-            x.ravel()[pairs[:, 0]],
-            x.ravel()[pairs[:, 1]]
-        ), 1)
+            1.0 - x.ravel()[pairs[:, 0]],
+            1.0 - x.ravel()[pairs[:, 1]]
+        ), 0)
 
         return PersistenceInformation(
                 pairing=gens,

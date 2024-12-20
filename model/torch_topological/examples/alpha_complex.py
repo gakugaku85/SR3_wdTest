@@ -7,10 +7,10 @@ the appearance of a point cloud, following the `TopologyLayer
 This example is still a **work in progress**.
 """
 
-from torch_topological.nn import AlphaComplex
-from torch_topological.nn import SummaryStatisticLoss
+from model.torch_topological.nn import AlphaComplex
+from model.torch_topological.nn import SummaryStatisticLoss
 
-from torch_topological.utils import SelectByDimension
+from model.torch_topological.utils import SelectByDimension
 
 import numpy as np
 import matplotlib.pyplot as plt

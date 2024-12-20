@@ -4,8 +4,8 @@ import time
 import torch
 import sys
 
-from torch_topological.nn import WassersteinDistance
-from torch_topological.nn import VietorisRipsComplex
+from model.torch_topological.nn import WassersteinDistance
+from model.torch_topological.nn import VietorisRipsComplex
 
 
 def run_test(X, vr, name, dist=False):

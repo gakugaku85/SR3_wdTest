@@ -7,7 +7,7 @@ of a target.
 """
 from torch import nn
 import torch
-from torch_topological.nn import EulerDistance, WeightedEulerCurve
+from model.torch_topological.nn import EulerDistance, WeightedEulerCurve
 import torch.optim as optim
 
 

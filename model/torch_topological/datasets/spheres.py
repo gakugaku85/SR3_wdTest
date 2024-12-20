@@ -7,7 +7,7 @@ import torch
 from torch.utils.data import Dataset
 from torch.utils.data import random_split
 
-from torch_topological.data import sample_from_sphere
+from model.torch_topological.data import sample_from_sphere
 
 
 def create_sphere_dataset(n_samples=500, n_spheres=11, d=100, r=5, seed=None):

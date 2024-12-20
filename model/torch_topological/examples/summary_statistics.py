@@ -12,11 +12,11 @@ import argparse
 
 import matplotlib.pyplot as plt
 
-from torch_topological.data import sample_from_disk
-from torch_topological.data import sample_from_unit_cube
+from model.torch_topological.data import sample_from_disk
+from model.torch_topological.data import sample_from_unit_cube
 
-from torch_topological.nn import SummaryStatisticLoss
-from torch_topological.nn import VietorisRipsComplex
+from model.torch_topological.nn import SummaryStatisticLoss
+from model.torch_topological.nn import VietorisRipsComplex
 
 from tqdm import tqdm
 

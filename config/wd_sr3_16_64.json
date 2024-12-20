@@ -16,7 +16,7 @@
         "train": {
             "name": "testImg",
             "mode": "HR", // whether need LR img
-            "dataroot": "/take/gaku/WDtest/images/sigma64",
+            "dataroot": "/take/gaku/WDtest/images/sigma10",
             "datatype": "mhd", //lmdb or img, path of img files
             "l_resolution": 16, // low resolution need to super_resolution
             "r_resolution": 64, // high resolution
@@ -28,7 +28,7 @@
         "val1": {
             "name": "testImg",
             "mode": "HR",
-            "dataroot": "/take/gaku/WDtest/images/sigma64_val1",
+            "dataroot": "/take/gaku/WDtest/images/sigma10_val1",
             "datatype": "mhd", //lmdb or img, path of img files
             "l_resolution": 16,
             "r_resolution": 64,
@@ -38,7 +38,7 @@
         "val2": {
             "name": "testImg",
             "mode": "HR",
-            "dataroot": "/take/gaku/WDtest/images/sigma64_val2",
+            "dataroot": "/take/gaku/WDtest/images/sigma10_val2",
             "datatype": "mhd", //lmdb or img, path of img files
             "l_resolution": 16,
             "r_resolution": 64,
@@ -83,7 +83,7 @@
         "diffusion": {
             "image_size": 64,
             "channels": 1, //sample channel
-            "loss_func": "wd",
+            "loss_func": "wd", //wd or l1 or l2
             "loss_name": "wd",  //wd or original
             "conditional": true, // unconditional generation or unconditional generation(super_resolution)
             "under_step_wd_loss": 2000

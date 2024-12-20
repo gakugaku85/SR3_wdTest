@@ -35,7 +35,7 @@ from torch_geometric.nn import global_mean_pool
 
 from torch_scatter import scatter
 
-from torch_topological.utils import pairwise
+from model.torch_topological.utils import pairwise
 
 
 class DeepSetLayer(nn.Module):

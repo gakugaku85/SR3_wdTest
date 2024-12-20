@@ -7,8 +7,8 @@ adversarial loss into a GAN architecture.
 import torch
 import torchvision
 
-from torch_topological.nn import CubicalComplex
-from torch_topological.nn import WassersteinDistance
+from model.torch_topological.nn import CubicalComplex
+from model.torch_topological.nn import WassersteinDistance
 
 from tqdm import tqdm
 

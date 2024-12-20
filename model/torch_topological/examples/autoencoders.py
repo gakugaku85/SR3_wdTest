@@ -14,10 +14,10 @@ from tqdm import tqdm
 
 from torch.utils.data import DataLoader
 
-from torch_topological.datasets import Spheres
+from model.torch_topological.datasets import Spheres
 
-from torch_topological.nn import SignatureLoss
-from torch_topological.nn import VietorisRipsComplex
+from model.torch_topological.nn import SignatureLoss
+from model.torch_topological.nn import VietorisRipsComplex
 
 
 class LinearAutoencoder(torch.nn.Module):

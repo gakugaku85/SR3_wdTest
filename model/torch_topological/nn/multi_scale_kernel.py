@@ -2,7 +2,7 @@
 
 import torch
 
-from torch_topological.utils import wrap_if_not_iterable
+from model.torch_topological.utils import wrap_if_not_iterable
 
 
 class MultiScaleKernel(torch.nn.Module):

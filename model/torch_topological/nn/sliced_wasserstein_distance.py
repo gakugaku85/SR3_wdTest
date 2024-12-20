@@ -5,7 +5,7 @@ import torch
 
 import numpy as np
 
-from torch_topological.utils import wrap_if_not_iterable
+from model.torch_topological.utils import wrap_if_not_iterable
 
 
 class SlicedWassersteinDistance(torch.nn.Module):

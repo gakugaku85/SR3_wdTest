@@ -6,7 +6,7 @@ from itertools import chain
 
 from operator import itemgetter
 
-from torch_topological.utils import nesting_level
+from model.torch_topological.utils import nesting_level
 
 import torch
 

@@ -19,9 +19,9 @@ if __name__ == "__main__":
                         help='Run either train(training) or val(generation)', default='train')
     parser.add_argument('-gpu', '--gpu_ids', type=str, default="0")
     parser.add_argument('-debug', '-d', action='store_true')
-    parser.add_argument('-enable_wandb', action='store_true')
+    parser.add_argument('-enable_wandb', '-w', action='store_true')
     parser.add_argument('-log_wandb_ckpt', action='store_true')
-    parser.add_argument('-log_eval', action='store_true')
+    parser.add_argument('-log_eval', '-l',action='store_true')
 
     # parse configs
     args = parser.parse_args()
@@ -112,7 +112,7 @@ if __name__ == "__main__":
                 end_time = time.time()
 
                 times.append(end_time - start_time)
-                print("time average{}, {}".format(current_step, np.mean(times)))
+                # print("time average{}, {}".format(current_step, np.mean(times)))
 
                 # validation
                 if current_step % opt['train']['val_freq'] == 0:
@@ -121,7 +121,7 @@ if __name__ == "__main__":
                         opt['model']['beta_schedule']['val'], schedule_phase='val')
 
                     # train out
-                    train_out_path = '{}/{}/train'.format(opt['path']['results'], current_epoch)
+                    train_out_path = '{}/{}/train'.format(opt['path']['results'], current_step)
                     train_psnr = 0.0
                     os.makedirs(train_out_path, exist_ok=True)
                     diffusion.test(continous=False)
