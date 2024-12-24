@@ -110,7 +110,7 @@ class WassersteinDistance(torch.nn.Module):
 
         for pers_info in zip(X, Y):
             D1 = pers_info[0]
-            D2 = pers_info[1]
+            D2 = pers_info[1].diagram
 
             n = len(D1)
             m = len(D2)

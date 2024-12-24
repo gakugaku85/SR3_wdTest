@@ -60,19 +60,112 @@ def make_beta_schedule(schedule, n_timestep, linear_start=1e-4, linear_end=2e-2,
     return betas
 
 class TopologicalWDLoss(nn.Module):
-    def __init__(self):
+    def __init__(self, weight_thre=0.01):
         super(TopologicalWDLoss, self).__init__()
         self.cubical = CubicalComplex()
         self.wd_loss_func = WassersteinDistance(q=2)
+        self.weight_thre = weight_thre
+
+    def forward(self, hr_batch, sr_batch):
+
+        loss = 0.0
+        start_time = time.time()
+        cubical_time = []
+        frangi_time = []
+        select_time = []
+        wd_time = []
+
+        for hr, sr in zip(hr_batch, sr_batch):
+            cubical_start = time.time()
+            hr = hr.squeeze()
+            sr = sr.squeeze()
+
+            hr_info = self.cubical(1.0-hr)[0] # 0はpersistence diagramの連結成分、1は穴
+            sr_info = self.cubical(1.0-sr)[0]
+            cubical_time.append(time.time() - cubical_start)
+
+            frangi_start = time.time()
+            frangi_img = frangi(1.0 - hr.cpu().numpy())
+            frangi_img = torch.tensor(frangi_img, device=hr.device)
+            frangi_time.append(time.time() - frangi_start)
+
+            def select_point_by_weight(diagram):
+                # diagram.diagram と diagram.pairing がすでにテンソルの場合、clone().detach() を使用
+                birth_death = diagram.diagram.clone().detach().to(hr.device)  # shape: (N, 2)
+                pair_indices = diagram.pairing.clone().detach().to(hr.device)[:, :2]  # shape: (N, 2)
+
+                # birth, death を分離
+                birth = birth_death[:, 0]
+                death = birth_death[:, 1]
+
+                # 距離を計算
+                distance = torch.abs(birth - death) / torch.sqrt(torch.tensor(2.0, device=hr.device))
+
+                # 各ペアの重みを計算
+                weights = distance * frangi_img[pair_indices[:, 0], pair_indices[:, 1]]
+
+                # 重みが閾値を超える点をフィルタリング
+                valid_indices = weights > self.weight_thre
+                valid_birth_death = birth_death[valid_indices]
+
+                # 結果をテンソルで返す
+                return valid_birth_death.unsqueeze(0)
+
+            select_start = time.time()
+            per_hr = select_point_by_weight(hr_info)
+            select_time.append(time.time() - select_start)
+
+            # ic(len(per_hr), len(per_hr[0]))
+            # ic(len(sr_info.diagram), len(sr_info.diagram[0]))
+            wd_start = time.time()
+            loss += self.wd_loss_func(per_hr, sr_info)
+            wd_time.append(time.time() - wd_start)
+
+        ic("cubical", np.mean(cubical_time))
+        ic("frangi", np.mean(frangi_time))
+        ic("select", np.mean(select_time))
+        ic("wd", np.mean(wd_time))
+        ic("total", time.time() - start_time)
+        return loss
+
+
+class TopologicalWDLoss_parallel(nn.Module):
+    def __init__(self, weight_thre=0.01):
+        super(TopologicalWDLoss, self).__init__()
+        self.cubical = CubicalComplex()
+        self.wd_loss_func = WassersteinDistance(q=2)
+        self.weight_thre = 0.01
 
     def process_batch_item(self, x, y, result_queue):
         x = x.squeeze()
         y = y.squeeze()
 
-        ic(x.shape, y.shape)
+        hr_info = self.cubical(1.0-x)[0] # 0はpersistence diagramの連結成分、1は穴
+        sr_info = self.cubical(1.0-y)[0]
 
-        per_hr = self.cubical(x)[0]
-        per_sr = self.cubical(y)[0]
+        frangi_img = frangi(1 - x.cpu().numpy())
+
+        def select_point_by_weight(diagram):
+            persistent_d = []
+            for diagram, pair in zip(diagram.diagram, diagram.pairing):
+                birth, death = diagram
+
+                creator = pair[:2]
+
+                distance = torch.abs(birth - death) / torch.sqrt(torch.tensor(2.0))
+                weight = distance * frangi_img[creator[0], creator[1]]
+
+                if weight > self.weight_thre:
+                    persistent_d.append([birth.item(), death.item()])
+
+            return torch.tensor(persistent_d, dtype=torch.float32, device=x.device).unsqueeze(0)
+
+        per_hr = select_point_by_weight(hr_info)
+        per_sr = sr_info
+
+        # ic(len(per_hr), len(per_hr[0]))
+        # ic(len(sr_info.diagram), len(sr_info.diagram[0]))
+
         wd_loss = self.wd_loss_func(per_hr, per_sr)
         result_queue.put(wd_loss)
 
@@ -103,105 +196,6 @@ def default(val, d):
         return val
     return d() if isfunction(d) else d
 
-def match_cofaces_with_gudhi(image_data, cofaces):
-    height, width = image_data.shape
-    result = []
-
-    for dim, pairs in enumerate(cofaces[0]):
-        for birth, death in pairs:
-            birth_y, birth_x = np.unravel_index(birth, (height, width))
-            death_y, death_x = np.unravel_index(death, (height, width))
-            pers = (1.00-image_data.ravel()[birth], 1.00-image_data.ravel()[death])
-            result.append((dim, pers,((birth_y, birth_x), (death_y, death_x))))
-
-    for dim, births in enumerate(cofaces[1]):
-        for birth in births:
-            birth_y, birth_x = np.unravel_index(birth, (height, width))
-            pers = (1.0-image_data.ravel()[birth], 1.0)
-            result.append((dim, pers, ((birth_y, birth_x), None)))
-
-    return result
-
-
-class WassersteinDistanceLoss(nn.Module):
-    def __init__(self):
-        super(WassersteinDistanceLoss, self).__init__()
-        self.wd_loss_func = WassersteinDistance(q=2)
-
-    def persistent_homology(self, image_data, image_name="SR"):
-        """Computes and visualizes the persistent homology for the given image data."""
-        cc = gd.CubicalComplex(
-            dimensions=image_data.shape, top_dimensional_cells=1 - image_data.flatten()
-        )
-        cc.persistence()
-        cofaces = cc.cofaces_of_persistence_pairs()
-        result = match_cofaces_with_gudhi(image_data=image_data, cofaces=cofaces)
-
-        frangi_img = frangi(1 - image_data)
-        new_result = []
-
-        for dim, (birth, death), coordinates in result:
-            if dim == 1:
-                continue
-            if image_name == "SR":
-                new_result.append([birth, death])
-                continue
-            distance = np.abs(birth - death) / np.sqrt(2)
-            weight = distance * frangi_img[coordinates[0][0], coordinates[0][1]]
-
-            weight_threshold = 0.01
-            if weight > weight_threshold:
-                new_result.append([birth, death])
-
-        return new_result
-
-    def process_image(self, hr_img, sr_img, index, losses, hr_connect, sr_connect):
-        hr_connect[index] = self.persistent_homology(hr_img[0], image_name="HR")
-        sr_connect[index] = self.persistent_homology(sr_img[0], image_name="SR")
-
-    def forward(self, hr, sr):
-        num_images = hr.shape[0]
-
-        # multiprocessing.Managerを使って共有リストを作成
-        with multiprocessing.Manager() as manager:
-            losses = manager.list([None] * num_images)
-            hr_connect = manager.list([None] * num_images)
-            sr_connect = manager.list([None] * num_images)
-            processes = []
-
-            for i in range(num_images):
-                hr_img = hr[i].detach().float().cpu().numpy()
-                sr_img = sr[i].detach().float().cpu().numpy()
-                process = multiprocessing.Process(
-                    target=self.process_image, args=(hr_img, sr_img, i, losses, hr_connect, sr_connect)
-                )
-                processes.append(process)
-                process.start()
-
-            for process in processes:
-                process.join()
-
-            # `hr_connect` と `sr_connect` を Tensor に変換
-            ic(len(hr_connect), len(hr_connect[0]), hr_connect[0][0])
-            ic(len(sr_connect), len(sr_connect[0]), sr_connect[0][0])
-            # hr_connect と sr_connect を Tensor に変換
-            # 各要素が2Dデータであることを仮定してテンソルに変換
-            hr_connect_tensor = [
-                torch.tensor(connect, dtype=torch.float32, device=hr.device) for connect in hr_connect
-            ]
-            sr_connect_tensor = [
-                torch.tensor(connect, dtype=torch.float32, device=sr.device) for connect in sr_connect
-            ]
-
-
-
-            # Optional: Wasserstein distance loss の計算に使う場合
-            if len(hr_connect_tensor) > 0 and len(sr_connect_tensor) > 0:
-                total_loss = self.wd_loss_func(hr_connect_tensor, sr_connect_tensor)
-                return total_loss
-
-            return torch.tensor(0.0, device=hr.device)
-
 class GaussianDiffusion(nn.Module):
     def __init__(
         self,
@@ -212,7 +206,9 @@ class GaussianDiffusion(nn.Module):
         loss_name='wd',
         under_step_wd_loss=500,
         conditional=True,
-        schedule_opt=None
+        schedule_opt=None,
+        weight_thre=0.01,
+        wdloss_weight=100
     ):
         super().__init__()
         self.channels = channels
@@ -222,6 +218,8 @@ class GaussianDiffusion(nn.Module):
         self.loss_name = loss_name
         self.under_step_wd_loss = under_step_wd_loss
         self.conditional = conditional
+        self.weight_thre = weight_thre
+        self.wdloss_weight = wdloss_weight
         if schedule_opt is not None:
             pass
             # self.set_new_noise_schedule(schedule_opt)
@@ -233,8 +231,8 @@ class GaussianDiffusion(nn.Module):
             self.loss_func = nn.MSELoss(reduction='sum').to(device)
         elif self.loss_type == 'wd':
             self.loss_func = nn.L1Loss(reduction='sum').to(device)
-            self.loss_func2 = TopologicalWDLoss().to(device)
-            self.loss_wd = WassersteinDistanceLoss().to(device)
+            self.loss_func2 = TopologicalWDLoss(weight_thre=self.weight_thre).to(device)
+            # self.loss_wd = WassersteinDistanceLoss().to(device)
         else:
             raise NotImplementedError()
 
@@ -390,18 +388,19 @@ class GaussianDiffusion(nn.Module):
             x_recon = self.denoise_fn(
                 torch.cat([x_in['SR'], x_noisy], dim=1), continuous_sqrt_alpha_cumprod)
         self.origin_loss = self.loss_func(noise, x_recon)
-        if self.loss_name == 'wd':
+        if self.loss_type == 'wd':
             self.wd_loss = torch.tensor(0.0).to(x_start.device)
             if t < self.under_step_wd_loss:
                 denoise_img = self.predict_start_from_noise(x_noisy, t=t-1, noise=x_recon)
-                self.wd_loss = 100*self.loss_wd(x_in['HR'], denoise_img)
-                # self.wd_loss = self.loss_wd(x_in['HR'], denoise_img)
-                # self.wd_loss = self.loss_func2(x_in['HR'], denoise_img)
+                # self.wd_loss_my = 100*self.loss_wd(x_in['HR'], denoise_img)
+                # self.wd_loss_my = self.loss_wd(x_in['HR'], denoise_img)
+                self.wd_loss = self.wdloss_weight * self.loss_func2(x_in['HR'], denoise_img) # torch_topologicalのWassersteinDistanceLossを使う
             loss = self.origin_loss + self.wd_loss
-            ic(self.wd_loss)
-            ic(self.origin_loss)
-            ic(loss)
-        elif self.loss_name == 'original':
+            # ic(self.origin_loss)
+            # ic(self.wd_loss)
+            # ic(loss)
+
+        elif self.loss_type == 'l1':
             loss = self.origin_loss
         return loss
 
@@ -409,7 +408,7 @@ class GaussianDiffusion(nn.Module):
         return self.p_losses(x, *args, **kwargs)
 
     def get_each_loss(self):
-        if self.loss_name == 'wd':
+        if self.loss_type == 'wd':
             return self.origin_loss, self.wd_loss
-        elif self.loss_name == 'original':
+        elif self.loss_type == 'l1':
             return self.origin_loss, torch.tensor(0.0).to(self.origin_loss.device)

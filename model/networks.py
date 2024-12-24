@@ -107,7 +107,9 @@ def define_G(opt):
         loss_name=model_opt['diffusion']['loss_name'],
         under_step_wd_loss=model_opt['diffusion']['under_step_wd_loss'],
         conditional=model_opt['diffusion']['conditional'],
-        schedule_opt=model_opt['beta_schedule']['train']
+        schedule_opt=model_opt['beta_schedule']['train'],
+        weight_thre=model_opt['diffusion']['pd_weight_thre'],
+        wdloss_weight=model_opt['diffusion']['wdloss_weight']
     )
     if opt['phase'] == 'train':
         # init_weights(netG, init_type='kaiming', scale=0.1)

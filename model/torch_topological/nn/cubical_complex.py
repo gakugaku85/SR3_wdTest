@@ -173,10 +173,9 @@ class CubicalComplex(nn.Module):
         if self.superlevel:
             x = -x
 
-        ic(x)
         cubical_complex = gudhi.CubicalComplex(
             dimensions=x.shape,
-            top_dimensional_cells=1 - x.flatten()
+            top_dimensional_cells=x.flatten()
         )
 
         # We need the persistence pairs first, even though we are *not*
@@ -257,9 +256,9 @@ class CubicalComplex(nn.Module):
 
         # TODO: Most efficient way to generate diagram again?
         persistence_diagram = torch.stack((
-            1.0 - x.ravel()[pairs[:, 0]],
-            1.0 - x.ravel()[pairs[:, 1]]
-        ), 0)
+            x.ravel()[pairs[:, 0]],
+            x.ravel()[pairs[:, 1]]
+        ), 1)
 
         return PersistenceInformation(
                 pairing=gens,
