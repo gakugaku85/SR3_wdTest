@@ -66,7 +66,7 @@ class TopologicalWDLoss(nn.Module):
         self.wd_loss_func = WassersteinDistance(q=2)
         self.weight_thre = weight_thre
 
-    def forward(self, hr_batch, sr_batch):
+    def forward(self, hr_batch, sr_batch, frangi_batch):
 
         loss = 0.0
         start_time = time.time()
@@ -75,19 +75,20 @@ class TopologicalWDLoss(nn.Module):
         select_time = []
         wd_time = []
 
-        for hr, sr in zip(hr_batch, sr_batch):
+        for hr, sr, frangi_img in zip(hr_batch, sr_batch, frangi_batch):
             cubical_start = time.time()
             hr = hr.squeeze()
             sr = sr.squeeze()
+            frangi_img = frangi_img.squeeze()
 
             hr_info = self.cubical(1.0-hr)[0] # 0はpersistence diagramの連結成分、1は穴
             sr_info = self.cubical(1.0-sr)[0]
             cubical_time.append(time.time() - cubical_start)
 
-            frangi_start = time.time()
-            frangi_img = frangi(1.0 - hr.cpu().numpy())
-            frangi_img = torch.tensor(frangi_img, device=hr.device)
-            frangi_time.append(time.time() - frangi_start)
+            # frangi_start = time.time()
+            # frangi_img = frangi(1.0 - hr.cpu().numpy())
+            # frangi_img = torch.tensor(frangi_img, device=hr.device)
+            # frangi_time.append(time.time() - frangi_start)
 
             def select_point_by_weight(diagram):
                 # diagram.diagram と diagram.pairing がすでにテンソルの場合、clone().detach() を使用
@@ -122,7 +123,6 @@ class TopologicalWDLoss(nn.Module):
             wd_time.append(time.time() - wd_start)
 
         ic("cubical", np.mean(cubical_time))
-        ic("frangi", np.mean(frangi_time))
         ic("select", np.mean(select_time))
         ic("wd", np.mean(wd_time))
         ic("total", time.time() - start_time)
@@ -394,7 +394,7 @@ class GaussianDiffusion(nn.Module):
                 denoise_img = self.predict_start_from_noise(x_noisy, t=t-1, noise=x_recon)
                 # self.wd_loss_my = 100*self.loss_wd(x_in['HR'], denoise_img)
                 # self.wd_loss_my = self.loss_wd(x_in['HR'], denoise_img)
-                self.wd_loss = self.wdloss_weight * self.loss_func2(x_in['HR'], denoise_img) # torch_topologicalのWassersteinDistanceLossを使う
+                self.wd_loss = self.wdloss_weight * self.loss_func2(x_in['HR'], denoise_img, x_in['frangi']) # torch_topologicalのWassersteinDistanceLossを使う
             loss = self.origin_loss + self.wd_loss
             # ic(self.origin_loss)
             # ic(self.wd_loss)

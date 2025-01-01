@@ -19,28 +19,15 @@ class LRHRDataset(Dataset):
 
         self.hr_imgs = []
         self.sr_imgs = []
+        self.frangi_imgs = []
 
-        if datatype == 'img':
-            self.sr_path = Util.get_paths_from_images(
-                '{}/sr_{}_{}'.format(dataroot, l_resolution, r_resolution))
-            self.hr_path = Util.get_paths_from_images(
-                '{}/hr_{}'.format(dataroot, r_resolution))
-            if self.need_LR:
-                self.lr_path = Util.get_paths_from_images(
-                    '{}/lr_{}'.format(dataroot, l_resolution))
-            self.dataset_len = len(self.hr_path)
-            if self.data_len <= 0:
-                self.data_len = self.dataset_len
-            else:
-                self.data_len = min(self.data_len, self.dataset_len)
-        elif datatype == 'mhd':
+        if datatype == 'mhd':
             self.sr_path = Util.get_paths_from_mhds(
                 '{}/sr_{}_{}'.format(dataroot, l_resolution, r_resolution))
             self.hr_path = Util.get_paths_from_mhds(
                 '{}/hr_{}'.format(dataroot, r_resolution))
-            if self.need_LR:
-                self.lr_path = Util.get_paths_from_mhds(
-                    '{}/lr_{}'.format(dataroot, l_resolution))
+            self.frangi_path = Util.get_paths_from_mhds(
+                '{}/frangi'.format(dataroot))
             self.dataset_len = len(self.hr_path)
             if self.data_len <= 0:
                 self.data_len = self.dataset_len
@@ -50,13 +37,16 @@ class LRHRDataset(Dataset):
             raise NotImplementedError(
                 'data_type [{:s}] is not recognized.'.format(datatype))
 
-        for hr, sr in tqdm(zip(self.hr_path, self.sr_path), desc='create datasets', total=len(self.hr_path)):
+        for hr, sr, frangi in tqdm(zip(self.hr_path, self.sr_path, self.frangi_path), desc='create datasets', total=len(self.hr_path)):
             img_HR = sitk.ReadImage(hr)
             img_SR = sitk.ReadImage(sr)
+            img_frangi = sitk.ReadImage(frangi)
             nda_img_HR = sitk.GetArrayFromImage(img_HR)
             nda_img_SR = sitk.GetArrayFromImage(img_SR)
+            nda_img_frangi = sitk.GetArrayFromImage(img_frangi)
             self.hr_imgs.append(nda_img_HR)
             self.sr_imgs.append(nda_img_SR)
+            self.frangi_imgs.append(nda_img_frangi)
         print("train_slice_length : {}".format(self.data_len))
 
     def __len__(self):
@@ -64,26 +54,14 @@ class LRHRDataset(Dataset):
 
     def __getitem__(self, index):
         img_HR = None
-        img_LR = None
 
         nda_img_HR = self.hr_imgs[index]
         nda_img_SR = self.sr_imgs[index]
+        nda_img_frangi = self.frangi_imgs[index]
 
         if self.datatype == 'mhd':
             img_HR = Image.fromarray(nda_img_HR)
             img_SR = Image.fromarray(nda_img_SR)
-            [img_SR, img_HR] = Util.transform_augment([img_SR, img_HR], split=self.split, min_max=(0, 1))
-            return {'HR': img_HR, 'SR': img_SR, 'Index': index}
-        else:
-            img_HR = Image.open(self.hr_path[index]).convert("RGB")
-            img_SR = Image.open(self.sr_path[index]).convert("RGB")
-            if self.need_LR:
-                img_LR = Image.open(self.lr_path[index]).convert("RGB")
-        if self.need_LR:
-            [img_LR, img_SR, img_HR] = Util.transform_augment(
-                [img_LR, img_SR, img_HR], split=self.split, min_max=(-1, 1))
-            return {'LR': img_LR, 'HR': img_HR, 'SR': img_SR, 'Index': index}
-        else:
-            [img_SR, img_HR] = Util.transform_augment(
-                [img_SR, img_HR], split=self.split, min_max=(-1, 1))
-            return {'HR': img_HR, 'SR': img_SR, 'Index': index}
+            frangi_img = Image.fromarray(nda_img_frangi)
+            [img_SR, img_HR, frangi_img] = Util.transform_augment([img_SR, img_HR, frangi_img], split=self.split, min_max=(0, 1))
+            return {'HR': img_HR, 'SR': img_SR, "frangi": frangi_img ,'Index': index}

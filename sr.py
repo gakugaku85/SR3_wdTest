@@ -58,8 +58,7 @@ if __name__ == "__main__":
     for phase, dataset_opt in opt['datasets'].items():
         if phase == 'train' and args.phase != 'val':
             train_set = Data.create_dataset(dataset_opt, phase)
-            train_loader = Data.create_dataloader(
-                train_set, dataset_opt, phase)
+            train_loader = Data.create_dataloader(train_set, dataset_opt, phase)
         elif phase == 'val1':
             val_set = Data.create_dataset(dataset_opt, phase)
             val_list.append(Data.create_dataloader(val_set, dataset_opt, phase))
